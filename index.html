@@ -1,0 +1,2578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TerraMemo | World Exploration & Memory Atlas</title>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                    },
+                    colors: {
+                        ocean: '#a5c9eb',
+                        oceanLight: '#aad3df',
+                        land: '#f4f6f0',
+                        gblue: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#1a73e8',
+                            700: '#1557b0'
+                        },
+                        gemerald: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #aad3df;
+            color: #1e293b;
+            user-select: none;
+        }
+
+        /* Map Viewport & Custom Tinting for Natural Google Maps Aesthetic */
+        #map {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: radial-gradient(circle at 50% 40%, #b8dbf5 0%, #9bc4e8 100%);
+        }
+
+        /* Subtle warm natural tint on clean no-label physical tiles */
+        .leaflet-tile-pane {
+            filter: saturate(1.06) contrast(1.02) brightness(1.01);
+        }
+
+        /* Bright Glassmorphism */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.1), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+        }
+
+        .glass-pill {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(226, 232, 240, 0.9);
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+        }
+
+        /* Interactive SVG Territory Paths */
+        path.leaflet-interactive {
+            transition: fill 0.35s ease, fill-opacity 0.35s ease, stroke 0.35s ease, stroke-width 0.25s ease;
+            outline: none;
+        }
+
+        /* Custom Map Marker Beacons */
+        .beacon-wrapper {
+            position: relative;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .beacon-core {
+            width: 14px;
+            height: 14px;
+            border-radius: 9999px;
+            border: 2.5px solid #ffffff;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            z-index: 2;
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease;
+        }
+
+        .beacon-wrapper:hover .beacon-core {
+            transform: scale(1.3);
+        }
+
+        .beacon-blue .beacon-core {
+            background-color: #1a73e8;
+        }
+
+        .beacon-emerald .beacon-core {
+            background-color: #10b981;
+        }
+
+        .beacon-ring {
+            position: absolute;
+            width: 28px;
+            height: 28px;
+            border-radius: 9999px;
+            z-index: 1;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .beacon-blue .beacon-ring {
+            background-color: rgba(26, 115, 232, 0.35);
+            animation: pulse-ring 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        .beacon-emerald .beacon-ring {
+            background-color: rgba(16, 185, 129, 0.45);
+            animation: pulse-ring-emerald 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        .beacon-mystery .beacon-core {
+            background-color: #f59e0b;
+            transform: scale(1.05);
+        }
+
+        .beacon-mystery .beacon-ring {
+            background-color: rgba(245, 158, 11, 0.4);
+            animation: pulse-ring 2.2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        .beacon-target .beacon-core {
+            background-color: #ef4444;
+            transform: scale(1.35);
+        }
+
+        .beacon-target .beacon-ring {
+            background-color: rgba(239, 68, 68, 0.55);
+            animation: pulse-ring-emerald 1.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+
+        @keyframes shake-error {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+        .shake-anim {
+            animation: shake-error 0.4s ease-in-out;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.4); opacity: 0.9; }
+            80%, 100% { transform: scale(2.1); opacity: 0; }
+        }
+
+        @keyframes pulse-ring-emerald {
+            0% { transform: scale(0.4); opacity: 1; }
+            80%, 100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        /* Clean Map Tooltips */
+        .leaflet-tooltip.atlas-tooltip {
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(8px);
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            color: #0f172a;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            font-size: 12px;
+            padding: 6px 10px;
+            box-shadow: 0 6px 16px -3px rgba(15, 23, 42, 0.12);
+        }
+        .leaflet-tooltip-top.atlas-tooltip:before,
+        .leaflet-tooltip-bottom.atlas-tooltip:before,
+        .leaflet-tooltip-left.atlas-tooltip:before,
+        .leaflet-tooltip-right.atlas-tooltip:before {
+            display: none;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.45);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(100, 116, 139, 0.7);
+        }
+
+        /* Skeleton Shimmer */
+        .shimmer {
+            background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+            background-size: 200% 100%;
+            animation: shimmer-anim 1.5s infinite;
+        }
+        @keyframes shimmer-anim {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* UI Overlay Layering */
+        .hud-layer {
+            position: absolute;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        .hud-interactive {
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased text-slate-800">
+
+    <!-- Base Map Container -->
+    <div id="map"></div>
+
+    <!-- Top Navigation & Discovery Command Bar -->
+    <header class="hud-layer top-0 left-0 right-0 p-3 md:p-4 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        
+        <!-- Left: Brand Identity + Mode Switcher -->
+        <div class="flex items-center justify-between lg:justify-start gap-2.5">
+            <!-- Brand Pill -->
+            <div class="glass-panel hud-interactive px-3.5 py-2 rounded-2xl flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-gblue-600 to-gemerald-500 flex items-center justify-center text-white shadow-sm">
+                    <i class="fa-solid fa-earth-americas text-lg"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-slate-900 text-sm md:text-base tracking-tight leading-none">TerraMemo</h1>
+                        <span class="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700">Atlas</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-medium mt-0.5">Exploration & Core Memory Vault</p>
+                </div>
+            </div>
+
+            <!-- Tactical Mode Toggle: Country vs City -->
+            <div class="glass-panel hud-interactive p-1 rounded-2xl flex items-center gap-1" role="group" aria-label="Discovery Mode">
+                <button id="btn-mode-country" onclick="setDiscoveryMode('country')" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 bg-gblue-600 text-white shadow-sm">
+                    <i class="fa-solid fa-flag"></i>
+                    <span>Country Drill</span>
+                </button>
+                <button id="btn-mode-city" onclick="setDiscoveryMode('city')" class="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100/70">
+                    <i class="fa-solid fa-city"></i>
+                    <span>City Drill</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Center: Interactive Click-to-Identify Challenge HUD -->
+        <div class="hud-interactive relative flex-1 max-w-xl mx-auto lg:mx-0 w-full">
+            <div id="challenge-bar-container" class="glass-panel rounded-2xl flex items-center px-3.5 py-2 focus-within:ring-2 focus-within:ring-gblue-500/50 transition-all">
+                <div id="challenge-status-badge" class="px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800 text-[11px] font-bold flex items-center gap-1.5 mr-2.5 shrink-0">
+                    <i id="challenge-status-icon" class="fa-solid fa-hand-pointer text-amber-600"></i>
+                    <span id="challenge-target-label">Click a Country on Map</span>
+                </div>
+                <input 
+                    id="discovery-input" 
+                    type="text" 
+                    autocomplete="off"
+                    placeholder="Select an unrevealed territory on the map first..." 
+                    disabled
+                    class="w-full bg-transparent border-none outline-none text-sm font-medium text-slate-800 placeholder-slate-400 select-text disabled:cursor-not-allowed"
+                />
+                <div id="search-spinner" class="hidden mr-2">
+                    <i class="fa-solid fa-circle-notch fa-spin text-gblue-600 text-xs"></i>
+                </div>
+                <button id="btn-hint-challenge" onclick="giveChallengeHint()" class="hidden px-2.5 py-1.5 mr-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-[11px] font-semibold rounded-xl transition-all shrink-0" title="Get a first-letter hint">
+                    <i class="fa-regular fa-lightbulb"></i>
+                    <span class="hidden sm:inline ml-1">Hint</span>
+                </button>
+                <button id="btn-discover-submit" onclick="triggerDiscoveryFromInput()" disabled class="px-3.5 py-1.5 bg-gblue-600 hover:bg-gblue-700 disabled:bg-slate-300 disabled:text-slate-500 active:scale-95 text-white text-xs font-semibold rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0">
+                    <span>Verify</span>
+                    <i class="fa-solid fa-check text-[10px]"></i>
+                </button>
+            </div>
+
+            <!-- Feedback Banner for Wrong / Hint Attempts -->
+            <div id="challenge-feedback" class="hidden absolute left-0 right-0 top-full mt-2 glass-panel rounded-2xl px-4 py-2.5 text-xs font-semibold flex items-center justify-between z-50 border">
+                <span id="challenge-feedback-text">Not quite right — try again!</span>
+                <button onclick="skipOrRevealTarget()" class="text-[11px] underline opacity-80 hover:opacity-100 ml-3 shrink-0">Give Up & Reveal</button>
+            </div>
+
+            <!-- Instant Autocomplete Suggestions Dropdown (kept hidden for pure quiz mode) -->
+            <div id="search-suggestions" class="hidden"></div>
+        </div>
+
+        <!-- Right: Registry Stats, Backup/Restore & Quick Actions -->
+        <div class="flex items-center justify-end gap-2">
+            <!-- Toggle Left Registry Drawer -->
+            <button onclick="toggleRegistryDrawer()" class="glass-panel hud-interactive px-3.5 py-2 rounded-2xl hover:bg-white transition-all flex items-center gap-2.5 text-xs font-semibold text-slate-700" title="Toggle Discovered Locations Registry">
+                <i class="fa-solid fa-compass text-gblue-600 text-sm"></i>
+                <span class="hidden sm:inline">Discovered</span>
+                <span id="hud-total-badge" class="px-2 py-0.5 rounded-full bg-blue-100 text-gblue-700 font-bold text-[11px]">0</span>
+                <span id="hud-memory-badge" class="px-2 py-0.5 rounded-full bg-emerald-100 text-gemerald-700 font-bold text-[11px] flex items-center gap-1" title="Core Memories Archived">
+                    <i class="fa-solid fa-camera text-[9px]"></i>
+                    <span id="hud-memory-count">0</span>
+                </span>
+            </button>
+
+            <!-- Export Backup -->
+            <button onclick="exportAtlasBackup()" class="glass-panel hud-interactive p-2.5 rounded-2xl hover:bg-white text-slate-600 hover:text-gblue-600 transition-all" title="Export Atlas & Memories (JSON)">
+                <i class="fa-solid fa-download text-sm"></i>
+            </button>
+
+            <!-- Import Backup -->
+            <label class="glass-panel hud-interactive p-2.5 rounded-2xl hover:bg-white text-slate-600 hover:text-gemerald-600 transition-all cursor-pointer" title="Import Atlas Backup (JSON)">
+                <i class="fa-solid fa-upload text-sm"></i>
+                <input type="file" id="import-backup-input" accept=".json" class="hidden" onchange="importAtlasBackup(event)" />
+            </label>
+
+            <!-- Map Tile Engine & Free API Key Settings -->
+            <button onclick="openMapSettingsModal()" class="glass-panel hud-interactive px-3 py-2 rounded-2xl hover:bg-white text-slate-700 hover:text-gblue-600 transition-all flex items-center gap-1.5 text-xs font-semibold" title="Map Style & Free API Key Settings">
+                <i class="fa-solid fa-sliders text-gblue-600 text-sm"></i>
+                <span class="hidden xl:inline">Map Style / API Key</span>
+            </button>
+
+            <!-- Reset / Wipe Drill Cache -->
+            <button onclick="openResetConfirmModal()" class="glass-panel hud-interactive p-2.5 rounded-2xl hover:bg-red-50 text-slate-500 hover:text-red-600 transition-all" title="Reset Memorization Drill & Cache">
+                <i class="fa-solid fa-rotate-left text-sm"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Left Collapsible Drawer: Discovered Locations Registry -->
+    <aside id="registry-drawer" class="hud-layer top-20 bottom-6 left-3 md:left-4 w-80 sm:w-96 transition-transform duration-300 ease-out z-30 flex flex-col">
+        <div class="glass-panel hud-interactive w-full h-full rounded-3xl flex flex-col overflow-hidden">
+            
+            <!-- Drawer Header -->
+            <div class="p-4 border-b border-slate-200/80 flex items-center justify-between bg-white/50">
+                <div>
+                    <h2 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                        <i class="fa-solid fa-layer-group text-gblue-600"></i>
+                        <span>Discovered Registry</span>
+                    </h2>
+                    <p id="registry-progress-label" class="text-[11px] text-slate-500 mt-0.5">0 / 195 Sovereign States Mapped</p>
+                </div>
+                <button onclick="toggleRegistryDrawer()" class="w-7 h-7 rounded-full hover:bg-slate-200/60 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors">
+                    <i class="fa-solid fa-chevron-left text-xs"></i>
+                </button>
+            </div>
+
+            <!-- Progress Bar & Quick Filters -->
+            <div class="px-4 py-3 bg-slate-50/70 border-b border-slate-200/60 space-y-2.5">
+                <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden flex">
+                    <div id="progress-bar-countries" class="bg-gblue-600 h-full transition-all duration-500" style="width: 0%"></div>
+                    <div id="progress-bar-memories" class="bg-gemerald-500 h-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+
+                <!-- Filter Pills -->
+                <div class="flex items-center justify-between gap-1 text-[11px] font-semibold">
+                    <button onclick="setRegistryFilter('all')" id="filter-all" class="flex-1 py-1 rounded-lg bg-white text-slate-800 shadow-sm border border-slate-200/80 transition-all">All</button>
+                    <button onclick="setRegistryFilter('country')" id="filter-country" class="flex-1 py-1 rounded-lg text-slate-500 hover:text-slate-800 transition-all">Countries</button>
+                    <button onclick="setRegistryFilter('city')" id="filter-city" class="flex-1 py-1 rounded-lg text-slate-500 hover:text-slate-800 transition-all">Cities</button>
+                    <button onclick="setRegistryFilter('memory')" id="filter-memory" class="flex-1 py-1 rounded-lg text-gemerald-700 hover:bg-emerald-50 transition-all flex items-center justify-center gap-1">
+                        <span class="w-1.5 h-1.5 rounded-full bg-gemerald-500"></span>Memories
+                    </button>
+                </div>
+            </div>
+
+            <!-- Discovered Items List -->
+            <div id="registry-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+                <!-- Populated dynamically by JS -->
+            </div>
+
+            <!-- Drawer Footer: Starter Samples & Map Legend -->
+            <div class="p-3.5 border-t border-slate-200/80 bg-white/60 flex items-center justify-between text-[11px] text-slate-500">
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <span class="flex items-center gap-1 font-medium">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>Mystery
+                    </span>
+                    <span class="flex items-center gap-1 font-medium">
+                        <span class="w-2.5 h-2.5 rounded-full bg-gblue-600 inline-block"></span>Unlocked
+                    </span>
+                    <span class="flex items-center gap-1 font-medium">
+                        <span class="w-2.5 h-2.5 rounded-full bg-gemerald-500 inline-block"></span>Memory
+                    </span>
+                </div>
+                <button onclick="seedStarterLocations()" class="text-gblue-600 hover:underline font-semibold flex items-center gap-1 shrink-0">
+                    <i class="fa-solid fa-wand-magic-sparkles text-[10px]"></i>
+                    <span>Demo Tour</span>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Floating Re-open Drawer Button (when collapsed) -->
+    <button id="btn-reopen-drawer" onclick="toggleRegistryDrawer()" class="hud-layer hud-interactive top-20 left-4 hidden glass-panel px-3.5 py-2.5 rounded-2xl text-xs font-semibold text-slate-700 hover:text-gblue-600 items-center gap-2 transition-all">
+        <i class="fa-solid fa-list-ul text-gblue-600"></i>
+        <span>Open Registry</span>
+    </button>
+
+    <!-- Right Floating Dossier Modal / Telemetry Card -->
+    <section id="dossier-panel" class="hud-layer top-20 bottom-6 right-3 md:right-4 w-[calc(100vw-24px)] sm:w-[440px] translate-x-[110%] transition-transform duration-300 ease-out z-40 flex flex-col">
+        <div class="glass-panel hud-interactive w-full h-full rounded-3xl flex flex-col overflow-hidden shadow-2xl border border-white">
+            
+            <!-- Hero Visual Header -->
+            <div class="relative h-44 bg-gradient-to-br from-slate-800 via-slate-700 to-gblue-700 shrink-0 overflow-hidden">
+                <!-- Wikipedia / Memory Thumbnail Backdrop -->
+                <img id="dossier-hero-img" src="" alt="Location Preview" class="w-full h-full object-cover opacity-85 transition-transform duration-700 hover:scale-105 hidden" />
+                <div id="dossier-hero-fallback" class="w-full h-full flex items-center justify-center bg-gradient-to-br from-gblue-600/90 to-gemerald-600/90">
+                    <i class="fa-solid fa-earth-asia text-white/25 text-7xl"></i>
+                </div>
+                <div class="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-900/35 to-transparent"></div>
+
+                <!-- Top Floating Action Bar inside Hero -->
+                <div class="absolute top-3.5 left-4 right-4 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span id="dossier-type-badge" class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/90 text-slate-800 shadow-sm backdrop-blur-md">
+                            Sovereign Country
+                        </span>
+                        <span id="dossier-memory-pill" class="hidden px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500 text-white shadow-sm items-center gap-1">
+                            <i class="fa-solid fa-heart text-[9px]"></i> Memory Vaulted
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <button onclick="deleteCurrentEntity()" class="w-8 h-8 rounded-full bg-black/40 hover:bg-red-600 text-white/90 hover:text-white backdrop-blur-md flex items-center justify-center transition-colors" title="Remove from Discovered Registry">
+                            <i class="fa-regular fa-trash-can text-xs"></i>
+                        </button>
+                        <button onclick="closeDossierPanel()" class="w-8 h-8 rounded-full bg-black/40 hover:bg-black/70 text-white backdrop-blur-md flex items-center justify-center transition-colors" title="Close Dossier">
+                            <i class="fa-solid fa-xmark text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Bottom Title & Flag Overlay -->
+                <div class="absolute bottom-3.5 left-4 right-4 flex items-end justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <img id="dossier-flag" src="" alt="Flag" class="w-12 h-8 object-cover rounded-md border border-white/80 shadow-md hidden shrink-0 bg-white" />
+                        <div class="min-w-0">
+                            <h2 id="dossier-title" class="text-xl font-bold text-white truncate leading-tight drop-shadow-sm">Select Location</h2>
+                            <p id="dossier-subtitle" class="text-xs text-slate-200 font-medium truncate mt-0.5 flex items-center gap-1.5">
+                                <i class="fa-solid fa-location-dot text-emerald-400"></i>
+                                <span id="dossier-coords">--</span>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dossier Navigation Tabs -->
+            <div class="flex border-b border-slate-200 bg-slate-50/80 px-3 pt-2 gap-1 shrink-0">
+                <button id="tab-btn-intel" onclick="switchDossierTab('intel')" class="flex-1 py-2.5 px-3 text-xs font-bold rounded-t-xl border-b-2 border-gblue-600 text-gblue-600 bg-white shadow-sm flex items-center justify-center gap-2 transition-all">
+                    <i class="fa-solid fa-satellite"></i>
+                    <span>Intelligence Briefing</span>
+                </button>
+                <button id="tab-btn-memory" onclick="switchDossierTab('memory')" class="flex-1 py-2.5 px-3 text-xs font-bold rounded-t-xl border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2 transition-all">
+                    <i class="fa-solid fa-camera-retro text-gemerald-600"></i>
+                    <span>Core Memory</span>
+                    <span id="tab-memory-dot" class="hidden w-2 h-2 rounded-full bg-gemerald-500"></span>
+                </button>
+            </div>
+
+            <!-- Tab 1: Intelligence Briefing (REST Countries + Wikipedia Summary) -->
+            <div id="tab-content-intel" class="flex-1 overflow-y-auto p-4 space-y-5 select-text">
+                
+                <!-- Skeleton Loader while fetching telemetry -->
+                <div id="intel-skeleton" class="hidden space-y-4">
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div class="h-16 rounded-2xl shimmer"></div>
+                        <div class="h-16 rounded-2xl shimmer"></div>
+                        <div class="h-16 rounded-2xl shimmer"></div>
+                        <div class="h-16 rounded-2xl shimmer"></div>
+                    </div>
+                    <div class="h-28 rounded-2xl shimmer"></div>
+                </div>
+
+                <!-- Vital Statistics Grid -->
+                <div id="intel-stats-section" class="space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Vital Telemetry</h3>
+                        <span id="stat-region-tag" class="text-[11px] font-semibold text-gblue-700 bg-blue-50 px-2 py-0.5 rounded-md">Global</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <div class="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/70">
+                            <div class="text-[10px] font-semibold uppercase text-slate-400">Capital / Hub</div>
+                            <div id="stat-capital" class="text-xs font-bold text-slate-800 mt-0.5 truncate">--</div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/70">
+                            <div class="text-[10px] font-semibold uppercase text-slate-400">Population</div>
+                            <div id="stat-population" class="text-xs font-bold text-slate-800 mt-0.5 truncate">--</div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/70">
+                            <div class="text-[10px] font-semibold uppercase text-slate-400">Currencies</div>
+                            <div id="stat-currency" class="text-xs font-bold text-slate-800 mt-0.5 truncate">--</div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/70">
+                            <div class="text-[10px] font-semibold uppercase text-slate-400">Gini / Economy</div>
+                            <div id="stat-gini" class="text-xs font-bold text-slate-800 mt-0.5 truncate">--</div>
+                        </div>
+                    </div>
+                    <div class="p-3 rounded-2xl bg-slate-50/90 border border-slate-200/70 flex items-center justify-between gap-2">
+                        <div>
+                            <div class="text-[10px] font-semibold uppercase text-slate-400">Official Languages</div>
+                            <div id="stat-languages" class="text-xs font-semibold text-slate-700 mt-0.5">--</div>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <div class="text-[10px] font-semibold uppercase text-slate-400">Area</div>
+                            <div id="stat-area" class="text-xs font-semibold text-slate-700 mt-0.5">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cultural & Historic Summary (Wikipedia REST API v1) -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                            <i class="fa-brands fa-wikipedia-w text-slate-600"></i>
+                            <span>Cultural & Historic Briefing</span>
+                        </h3>
+                    </div>
+                    <div class="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-2">
+                        <p id="wiki-extract" class="text-xs text-slate-600 leading-relaxed">
+                            Select any discovered territory or city pin on the map to synthesize real-time geographic and encyclopedic intelligence.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Official Outbound Directives -->
+                <div class="space-y-2 pt-1">
+                    <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Official Outbound Directives</h3>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <a id="directive-wiki" href="https://en.wikipedia.org" target="_blank" rel="noopener noreferrer" class="p-2.5 rounded-xl bg-slate-100 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex items-center justify-between text-xs font-semibold text-slate-700 hover:text-gblue-700 transition-all group">
+                            <span class="flex items-center gap-2">
+                                <i class="fa-brands fa-wikipedia-w text-sm"></i>
+                                <span>Wikipedia Entry</span>
+                            </span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-gblue-600"></i>
+                        </a>
+                        <a id="directive-osm" href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" class="p-2.5 rounded-xl bg-slate-100 hover:bg-emerald-50 border border-slate-200/80 hover:border-emerald-200 flex items-center justify-between text-xs font-semibold text-slate-700 hover:text-gemerald-700 transition-all group">
+                            <span class="flex items-center gap-2">
+                                <i class="fa-solid fa-map-location-dot text-sm text-gemerald-600"></i>
+                                <span>OpenStreetMap</span>
+                            </span>
+                            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400 group-hover:text-gemerald-600"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Personal Memory Archive ("Core Memories" Vault) -->
+            <div id="tab-content-memory" class="hidden flex-1 overflow-y-auto p-4 space-y-4 select-text">
+                
+                <!-- Vault Status Banner -->
+                <div class="p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200/80 flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-gemerald-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
+                        <i class="fa-solid fa-vault text-xs"></i>
+                    </div>
+                    <div class="text-xs">
+                        <div class="font-bold text-emerald-950">Zero-Backend Core Memory Vault</div>
+                        <p class="text-[11px] text-emerald-700 leading-relaxed mt-0.5">
+                            Field notes and photos are stored locally in your browser's <strong>IndexedDB</strong>. Attaching a memory upgrades this location to a pulsing emerald beacon on your atlas.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Field Notes / Travel Journal (Markdown friendly) -->
+                <div class="space-y-1.5">
+                    <div class="flex items-center justify-between">
+                        <label for="memory-notes-input" class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <i class="fa-solid fa-pen-nib text-gemerald-600"></i>
+                            <span>Personal Field Notes & Reflections</span>
+                        </label>
+                        <span id="memory-saved-timestamp" class="text-[10px] font-medium text-slate-400">Not saved yet</span>
+                    </div>
+                    <textarea 
+                        id="memory-notes-input" 
+                        rows="5" 
+                        placeholder="Write your travel log, favorite cafés, dates visited, or personal reflections... (Supports **bold**, *italics*, and bullet points)"
+                        class="w-full p-3 rounded-2xl bg-white border border-slate-200 focus:border-gemerald-500 focus:ring-2 focus:ring-gemerald-500/20 outline-none text-xs text-slate-800 leading-relaxed resize-y"
+                    ></textarea>
+                    <!-- Live Formatted Markdown Preview -->
+                    <div id="memory-markdown-preview" class="hidden p-3 rounded-xl bg-slate-50 border border-slate-200/70 text-xs text-slate-700 space-y-1"></div>
+                </div>
+
+                <!-- Drag-and-Drop Multi-Image Uploader -->
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <i class="fa-regular fa-images text-gemerald-600"></i>
+                            <span>Memory Photo Gallery</span>
+                        </label>
+                        <span id="memory-photo-count" class="text-[10px] font-semibold text-slate-400">0 photos attached</span>
+                    </div>
+
+                    <div 
+                        id="memory-dropzone"
+                        class="border-2 border-dashed border-slate-300 hover:border-gemerald-500 bg-slate-50/60 hover:bg-emerald-50/40 rounded-2xl p-4 text-center cursor-pointer transition-all"
+                        onclick="document.getElementById('memory-file-input').click()"
+                    >
+                        <input type="file" id="memory-file-input" accept="image/*" multiple class="hidden" onchange="handleMemoryPhotoUpload(event)" />
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl text-gemerald-600 mb-1.5"></i>
+                        <p class="text-xs font-semibold text-slate-700">Click or drag & drop photos here</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Auto-compressed for instant IndexedDB persistence</p>
+                    </div>
+
+                    <!-- Photo Thumbnails Grid -->
+                    <div id="memory-gallery-grid" class="grid grid-cols-3 gap-2 pt-1">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Save / Clear Memory Actions -->
+                <div class="pt-2 flex items-center gap-2">
+                    <button onclick="saveCurrentCoreMemory()" class="flex-1 py-2.5 px-4 rounded-xl bg-gemerald-600 hover:bg-gemerald-700 active:scale-[0.99] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Save Core Memory to Vault</span>
+                    </button>
+                    <button onclick="clearCurrentCoreMemory()" class="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 font-semibold text-xs transition-all" title="Delete Core Memory for this location">
+                        <i class="fa-solid fa-eraser"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Bottom-Right Floating Map Controls -->
+    <div class="hud-layer bottom-5 right-3 md:right-4 flex flex-col gap-2 z-20">
+        <button onclick="resetMapView()" class="glass-pill hud-interactive w-10 h-10 rounded-2xl flex items-center justify-center text-slate-700 hover:text-gblue-600 hover:bg-white transition-all" title="Reset Global Map View">
+            <i class="fa-solid fa-globe text-sm"></i>
+        </button>
+        <button onclick="map.zoomIn()" class="glass-pill hud-interactive w-10 h-10 rounded-2xl flex items-center justify-center text-slate-700 hover:text-gblue-600 hover:bg-white transition-all" title="Zoom In">
+            <i class="fa-solid fa-plus text-sm"></i>
+        </button>
+        <button onclick="map.zoomOut()" class="glass-pill hud-interactive w-10 h-10 rounded-2xl flex items-center justify-center text-slate-700 hover:text-gblue-600 hover:bg-white transition-all" title="Zoom Out">
+            <i class="fa-solid fa-minus text-sm"></i>
+        </button>
+    </div>
+
+    <!-- Fullscreen Image Lightbox Modal -->
+    <div id="lightbox-modal" class="fixed inset-0 z-[2000] bg-slate-950/85 backdrop-blur-md hidden items-center justify-center p-4" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Full Memory" class="max-w-full max-h-[90vh] rounded-2xl shadow-2xl border border-white/20 object-contain" />
+        <button class="absolute top-5 right-5 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center">
+            <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+    </div>
+
+    <!-- Custom Reset Confirmation Modal (No native alert/confirm) -->
+    <div id="reset-modal" class="fixed inset-0 z-[2000] bg-slate-900/40 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="glass-panel max-w-md w-full rounded-3xl p-6 space-y-4 border border-white shadow-2xl">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                    <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-900 text-base">Reset Atlas Memorization Drill?</h3>
+                    <p class="text-xs text-slate-500">Choose whether to wipe only revealed map markers or clear your IndexedDB Core Memories too.</p>
+                </div>
+            </div>
+            <div class="flex flex-col gap-2 pt-2">
+                <button onclick="executeAtlasReset(false)" class="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs transition-all">
+                    Reset Revealed Drill Only (Keep Core Memories)
+                </button>
+                <button onclick="executeAtlasReset(true)" class="w-full py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-xs transition-all">
+                    Full Factory Wipe (Clear Drill + IndexedDB Memories)
+                </button>
+                <button onclick="closeResetConfirmModal()" class="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-all">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Map Engine & Free API Key Settings Modal -->
+    <div id="map-settings-modal" class="fixed inset-0 z-[2000] bg-slate-900/45 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="glass-panel max-w-lg w-full rounded-3xl p-6 space-y-5 border border-white shadow-2xl max-h-[90vh] overflow-y-auto select-text">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-blue-100 text-gblue-600 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-map text-base"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-base">Map Base Layer & Free API Key Setup</h3>
+                        <p class="text-xs text-slate-500">Eliminate tile watermarks using built-in keyless layers or your own free API key.</p>
+                    </div>
+                </div>
+                <button onclick="closeMapSettingsModal()" class="w-8 h-8 rounded-full hover:bg-slate-200/70 flex items-center justify-center text-slate-500">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Option A: 100% Free Built-In Keyless Modes (No Sign-Up Needed) -->
+            <div class="space-y-2">
+                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400">1. Keyless Built-In Map Engines (Zero Watermarks, No Sign-Up)</label>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button onclick="switchBaseMapStyle('vector_only')" id="style-btn-vector_only" class="p-3 rounded-2xl border text-left transition-all bg-blue-50/90 border-gblue-600">
+                        <div class="font-bold text-xs text-slate-900 flex items-center justify-between">
+                            <span>Pure Vector</span>
+                            <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Best</span>
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-1">Zero external tiles. Crisp ocean + GeoJSON landmasses. Never shows watermarks.</p>
+                    </button>
+                    <button onclick="switchBaseMapStyle('esri_physical')" id="style-btn-esri_physical" class="p-3 rounded-2xl border border-slate-200 bg-white/80 hover:bg-white text-left transition-all">
+                        <div class="font-bold text-xs text-slate-900">Esri Physical</div>
+                        <p class="text-[10px] text-slate-500 mt-1">Natural relief & ocean bathymetry with zero country text labels or watermarks.</p>
+                    </button>
+                    <button onclick="switchBaseMapStyle('carto_nolabels')" id="style-btn-carto_nolabels" class="p-3 rounded-2xl border border-slate-200 bg-white/80 hover:bg-white text-left transition-all">
+                        <div class="font-bold text-xs text-slate-900">CARTO Light</div>
+                        <p class="text-[10px] text-slate-500 mt-1">Minimalist flat tiles without text labels.</p>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Option B: Use Your Own Free MapTiler or Stadia API Key -->
+            <div class="space-y-3 pt-2 border-t border-slate-200/80">
+                <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400">2. Optional: Connect a Free Personal API Key (MapTiler / Stadia)</label>
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1.5 leading-relaxed">
+                    <div class="font-bold text-slate-800">How to get a 100% Free Key in 60 seconds (No Credit Card):</div>
+                    <ol class="list-decimal ml-4 space-y-1 text-[11px]">
+                        <li>Visit <a href="https://cloud.maptiler.com/start" target="_blank" rel="noopener" class="text-gblue-600 font-semibold underline">cloud.maptiler.com</a> (Free 100k tiles/mo) and sign in with Google/GitHub.</li>
+                        <li>Go to <strong>Account &rarr; API Keys</strong> in the left sidebar and copy your default key.</li>
+                        <li>Paste your key below and click <strong>Activate Custom API Key</strong>.</li>
+                    </ol>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <select id="custom-key-provider" class="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 outline-none">
+                        <option value="maptiler">MapTiler (Outdoor / Natural)</option>
+                        <option value="stadia">Stadia Maps (Alidade Smooth)</option>
+                    </select>
+                    <input id="custom-map-api-key" type="text" placeholder="Paste your free MapTiler or Stadia API key here..." class="flex-1 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-800 outline-none focus:border-gblue-600" />
+                    <button onclick="saveAndApplyCustomApiKey()" class="px-4 py-2 rounded-xl bg-gblue-600 hover:bg-gblue-700 text-white font-bold text-xs transition-all shrink-0">
+                        Activate Key
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Stack -->
+    <div id="toast-container" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[2100] flex flex-col items-center gap-2 pointer-events-none"></div>
+
+    <script>
+        /***********************************************************************
+         * 1. MODULAR STORAGE ENGINE (localStorage Registry + IndexedDB Memories)
+         ***********************************************************************/
+        const STORAGE_KEY_REGISTRY = 'terramemo_discovered_registry_v1';
+        const STORAGE_KEY_MAP_CONFIG = 'terramemo_map_config_v1';
+        const IDB_NAME = 'TerraMemoAtlasVaultDB';
+        const IDB_VERSION = 1;
+        const IDB_STORE_MEMORIES = 'core_memories';
+
+        class MemoryVaultDB {
+            constructor() {
+                this.dbPromise = this.initDB();
+            }
+
+            initDB() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(IDB_NAME, IDB_VERSION);
+                    request.onupgradeneeded = (event) => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(IDB_STORE_MEMORIES)) {
+                            db.createObjectStore(IDB_STORE_MEMORIES, { keyPath: 'id' });
+                        }
+                    };
+                    request.onsuccess = (event) => resolve(event.target.result);
+                    request.onerror = (event) => reject(event.target.error);
+                });
+            }
+
+            async getMemory(id) {
+                try {
+                    const db = await this.dbPromise;
+                    return new Promise((resolve, reject) => {
+                        const tx = db.transaction(IDB_STORE_MEMORIES, 'readonly');
+                        const store = tx.objectStore(IDB_STORE_MEMORIES);
+                        const req = store.get(id);
+                        req.onsuccess = () => resolve(req.result || null);
+                        req.onerror = () => reject(req.error);
+                    });
+                } catch (e) {
+                    console.warn('IndexedDB read fallback:', e);
+                    return null;
+                }
+            }
+
+            async getAllMemories() {
+                try {
+                    const db = await this.dbPromise;
+                    return new Promise((resolve, reject) => {
+                        const tx = db.transaction(IDB_STORE_MEMORIES, 'readonly');
+                        const store = tx.objectStore(IDB_STORE_MEMORIES);
+                        const req = store.getAll();
+                        req.onsuccess = () => resolve(req.result || []);
+                        req.onerror = () => reject(req.error);
+                    });
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            async saveMemory(memoryRecord) {
+                const db = await this.dbPromise;
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(IDB_STORE_MEMORIES, 'readwrite');
+                    const store = tx.objectStore(IDB_STORE_MEMORIES);
+                    const req = store.put(memoryRecord);
+                    req.onsuccess = () => resolve(true);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+
+            async deleteMemory(id) {
+                const db = await this.dbPromise;
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(IDB_STORE_MEMORIES, 'readwrite');
+                    const store = tx.objectStore(IDB_STORE_MEMORIES);
+                    const req = store.delete(id);
+                    req.onsuccess = () => resolve(true);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+
+            async clearAllMemories() {
+                const db = await this.dbPromise;
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(IDB_STORE_MEMORIES, 'readwrite');
+                    const store = tx.objectStore(IDB_STORE_MEMORIES);
+                    const req = store.clear();
+                    req.onsuccess = () => resolve(true);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+        }
+
+        const vaultDB = new MemoryVaultDB();
+
+        /***********************************************************************
+         * 2. APPLICATION STATE & OFFLINE FALLBACK DATA
+         ***********************************************************************/
+        const AppState = {
+            mode: 'country', // 'country' | 'city'
+            registryFilter: 'all', // 'all' | 'country' | 'city' | 'memory'
+            discovered: {}, // keyed by id (e.g., 'country:JPN' or 'city:tokyo-jp')
+            memoriesIndex: new Set(), // Set of entity IDs that have an active Core Memory
+            currentEntityId: null,
+            activeChallenge: null, // { type: 'country'|'city', feature, layer, cityObj, hintCount: 0 }
+            currentMemoryPhotos: [], // Array of dataURL strings for currently open modal
+            geoJsonFeatures: [], // Loaded world polygons
+            geoJsonLayer: null,
+            markersLayer: null,
+            countryLookupMap: new Map(), // normalized name/alias -> feature
+            restCountriesCache: new Map(), // iso3/name -> REST Countries v3.1 payload
+            wikiSummaryCache: new Map(), // title -> Wikipedia summary payload
+            drawerOpen: true,
+            baseTileLayer: null,
+            mapStyle: 'vector_only', // Default to Pure Vector so there is NEVER any "API Key Required" watermark!
+            customProvider: 'maptiler',
+            customApiKey: ''
+        };
+
+        // Common Country Aliases to ensure natural fill-in recognition
+        const COUNTRY_ALIASES = {
+            'usa': 'United States of America',
+            'united states': 'United States of America',
+            'us': 'United States of America',
+            'america': 'United States of America',
+            'uk': 'United Kingdom',
+            'britain': 'United Kingdom',
+            'great britain': 'United Kingdom',
+            'england': 'United Kingdom',
+            'uae': 'United Arab Emirates',
+            'south korea': 'Republic of Korea',
+            'korea': 'Republic of Korea',
+            'north korea': 'Dem. Rep. Korea',
+            'russia': 'Russian Federation',
+            'vietnam': 'Viet Nam',
+            'czechia': 'Czech Republic',
+            'ivory coast': "Côte d'Ivoire",
+            'drc': 'Democratic Republic of the Congo',
+            'congo': 'Republic of the Congo',
+            'tanzania': 'United Republic of Tanzania',
+            'syria': 'Syrian Arab Republic',
+            'laos': 'Lao PDR',
+            'bolivia': 'Bolivia',
+            'venezuela': 'Venezuela',
+            'iran': 'Iran',
+            'moldova': 'Moldova',
+            'taiwan': 'Taiwan',
+            'palestine': 'Palestine',
+            'brunei': 'Brunei',
+            'eswatini': 'Swaziland',
+            'north macedonia': 'Macedonia',
+            'timor leste': 'East Timor',
+            'east timor': 'East Timor',
+            'bahamas': 'The Bahamas',
+            'gambia': 'The Gambia'
+        };
+
+        // Curated World Cities for Click-to-Identify City Drill Mode (100% keyless)
+        const CURATED_CITIES = [
+            { name: 'Tokyo', aliases: ['tokyo'], country: 'Japan', iso2: 'JP', lat: 35.6762, lng: 139.6503, pop: '37,400,000', wiki: 'Tokyo' },
+            { name: 'Singapore', aliases: ['singapore'], country: 'Singapore', iso2: 'SG', lat: 1.3521, lng: 103.8198, pop: '5,917,600', wiki: 'Singapore' },
+            { name: 'Paris', aliases: ['paris'], country: 'France', iso2: 'FR', lat: 48.8566, lng: 2.3522, pop: '11,277,000', wiki: 'Paris' },
+            { name: 'New York City', aliases: ['new york', 'nyc', 'new york city'], country: 'United States', iso2: 'US', lat: 40.7128, lng: -74.0060, pop: '18,937,000', wiki: 'New_York_City' },
+            { name: 'London', aliases: ['london'], country: 'United Kingdom', iso2: 'GB', lat: 51.5072, lng: -0.1276, pop: '14,257,000', wiki: 'London' },
+            { name: 'Kyoto', aliases: ['kyoto'], country: 'Japan', iso2: 'JP', lat: 35.0116, lng: 135.7681, pop: '1,463,723', wiki: 'Kyoto' },
+            { name: 'Reykjavik', aliases: ['reykjavik'], country: 'Iceland', iso2: 'IS', lat: 64.1466, lng: -21.9426, pop: '139,875', wiki: 'Reykjavík' },
+            { name: 'Sydney', aliases: ['sydney'], country: 'Australia', iso2: 'AU', lat: -33.8688, lng: 151.2093, pop: '5,312,000', wiki: 'Sydney' },
+            { name: 'Rome', aliases: ['rome', 'roma'], country: 'Italy', iso2: 'IT', lat: 41.9028, lng: 12.4964, pop: '4,316,000', wiki: 'Rome' },
+            { name: 'Cairo', aliases: ['cairo'], country: 'Egypt', iso2: 'EG', lat: 30.0444, lng: 31.2357, pop: '22,183,000', wiki: 'Cairo' },
+            { name: 'Rio de Janeiro', aliases: ['rio', 'rio de janeiro'], country: 'Brazil', iso2: 'BR', lat: -22.9068, lng: -43.1729, pop: '13,728,000', wiki: 'Rio_de_Janeiro' },
+            { name: 'Istanbul', aliases: ['istanbul'], country: 'Turkey', iso2: 'TR', lat: 41.0082, lng: 28.9784, pop: '15,907,951', wiki: 'Istanbul' },
+            { name: 'Seoul', aliases: ['seoul'], country: 'South Korea', iso2: 'KR', lat: 37.5665, lng: 126.9780, pop: '9,720,846', wiki: 'Seoul' },
+            { name: 'Barcelona', aliases: ['barcelona'], country: 'Spain', iso2: 'ES', lat: 41.3874, lng: 2.1686, pop: '5,687,000', wiki: 'Barcelona' },
+            { name: 'Zurich', aliases: ['zurich'], country: 'Switzerland', iso2: 'CH', lat: 47.3769, lng: 8.5417, pop: '1,420,000', wiki: 'Zürich' },
+            { name: 'Buenos Aires', aliases: ['buenos aires'], country: 'Argentina', iso2: 'AR', lat: -34.6037, lng: -58.3816, pop: '15,490,000', wiki: 'Buenos_Aires' },
+            { name: 'Cape Town', aliases: ['cape town'], country: 'South Africa', iso2: 'ZA', lat: -33.9249, lng: 18.4241, pop: '4,890,000', wiki: 'Cape_Town' },
+            { name: 'Bangkok', aliases: ['bangkok'], country: 'Thailand', iso2: 'TH', lat: 13.7563, lng: 100.5018, pop: '11,070,000', wiki: 'Bangkok' },
+            { name: 'Beijing', aliases: ['beijing', 'peking'], country: 'China', iso2: 'CN', lat: 39.9042, lng: 116.4074, pop: '21,893,000', wiki: 'Beijing' },
+            { name: 'Mumbai', aliases: ['mumbai', 'bombay'], country: 'India', iso2: 'IN', lat: 19.0760, lng: 72.8777, pop: '21,297,000', wiki: 'Mumbai' },
+            { name: 'Mexico City', aliases: ['mexico city', 'cdmx'], country: 'Mexico', iso2: 'MX', lat: 19.4326, lng: -99.1332, pop: '22,281,000', wiki: 'Mexico_City' },
+            { name: 'Toronto', aliases: ['toronto'], country: 'Canada', iso2: 'CA', lat: 43.6532, lng: -79.3832, pop: '6,372,000', wiki: 'Toronto' },
+            { name: 'Berlin', aliases: ['berlin'], country: 'Germany', iso2: 'DE', lat: 52.5200, lng: 13.4050, pop: '3,850,809', wiki: 'Berlin' },
+            { name: 'Dubai', aliases: ['dubai'], country: 'United Arab Emirates', iso2: 'AE', lat: 25.2048, lng: 55.2708, pop: '3,600,000', wiki: 'Dubai' },
+            { name: 'Nairobi', aliases: ['nairobi'], country: 'Kenya', iso2: 'KE', lat: -1.2921, lng: 36.8219, pop: '5,325,000', wiki: 'Nairobi' },
+            { name: 'Lima', aliases: ['lima'], country: 'Peru', iso2: 'PE', lat: -12.0464, lng: -77.0428, pop: '11,204,000', wiki: 'Lima' }
+        ];
+
+        /***********************************************************************
+         * 3. INTERACTIVE BASE MAP ENGINE (Leaflet.js - Zero API Key Required)
+         ***********************************************************************/
+        let map;
+
+        async function initAtlasApp() {
+            // Load saved Map Style / API Key preference
+            loadMapConfig();
+
+            // 1. Initialize Leaflet Map with natural bounds and smooth inertia
+            map = L.map('map', {
+                center: [24, 12],
+                zoom: 3,
+                minZoom: 2,
+                maxZoom: 12,
+                zoomControl: false,
+                inertia: true,
+                inertiaDeceleration: 2800,
+                worldCopyJump: true
+            });
+
+            // Apply selected base map layer (defaults to 100% watermark-free Pure Vector + Natural Earth)
+            applyBaseMapLayer();
+
+            AppState.markersLayer = L.layerGroup().addTo(map);
+
+            // 2. Load Saved Registry & IndexedDB Memory Index
+            loadSavedRegistry();
+            await syncMemoriesIndex();
+
+            // 3. Load World Country Boundaries GeoJSON
+            await loadWorldBoundariesGeoJSON();
+
+            // 4. Render any previously discovered locations & markers
+            renderAllDiscoveredOnMap();
+            renderRegistryList();
+            updateHudCounters();
+
+            // 5. Bind Keyboard Shortcuts & Input Listeners
+            setupUIEventListeners();
+        }
+
+        async function loadWorldBoundariesGeoJSON() {
+            const GEOJSON_URLS = [
+                'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson',
+                'https://raw.githubusercontent.com/vasturiano/globe.gl/master/example/datasets/ne_110m_admin_0_countries.geojson'
+            ];
+
+            let geoData = null;
+            for (const url of GEOJSON_URLS) {
+                try {
+                    const res = await fetch(url);
+                    if (res.ok) {
+                        geoData = await res.json();
+                        break;
+                    }
+                } catch (err) {
+                    console.warn('Fallback GeoJSON fetch:', err);
+                }
+            }
+
+            if (!geoData || !geoData.features) {
+                showToast('Unable to load world vector outlines. City mode remains active.', 'amber');
+                return;
+            }
+
+            AppState.geoJsonFeatures = geoData.features;
+
+            // Index countries by normalized name, ISO codes, and common aliases
+            geoData.features.forEach(feature => {
+                const props = feature.properties || {};
+                const name = props.NAME || props.ADMIN || props.name || '';
+                const admin = props.ADMIN || name;
+                const iso3 = (props.ISO_A3 && props.ISO_A3 !== '-99') ? props.ISO_A3 : (props.ADM0_A3 || feature.id || name.slice(0, 3).toUpperCase());
+                const iso2 = (props.ISO_A2 && props.ISO_A2 !== '-99') ? props.ISO_A2 : '';
+
+                feature.atlasMeta = {
+                    id: `country:${iso3}`,
+                    name: name,
+                    admin: admin,
+                    iso3: iso3,
+                    iso2: iso2,
+                    continent: props.CONTINENT || props.REGION_UN || 'Global'
+                };
+
+                [name, admin, props.NAME_LONG, props.BRK_NAME, props.FORMAL_EN, iso3, iso2].forEach(key => {
+                    if (key && typeof key === 'string' && key !== '-99') {
+                        AppState.countryLookupMap.set(normalizeText(key), feature);
+                    }
+                });
+            });
+
+            // Create interactive GeoJSON polygon layer
+            AppState.geoJsonLayer = L.geoJSON(AppState.geoJsonFeatures, {
+                style: (feature) => computeCountryPolygonStyle(feature),
+                onEachFeature: (feature, layer) => {
+                    const meta = feature.atlasMeta;
+
+                    layer.on({
+                        mouseover: (e) => {
+                            const isDiscovered = Boolean(AppState.discovered[meta.id]);
+                            const hasMemory = AppState.memoriesIndex.has(meta.id);
+                            const isTarget = AppState.activeChallenge?.type === 'country' && AppState.activeChallenge?.feature?.atlasMeta?.id === meta.id;
+                            if (isTarget) return;
+
+                            if (isDiscovered) {
+                                layer.setStyle({
+                                    weight: 2.5,
+                                    fillOpacity: hasMemory ? 0.65 : 0.55
+                                });
+                            } else if (AppState.mode === 'country') {
+                                layer.setStyle({
+                                    weight: 1.8,
+                                    color: '#d97706',
+                                    fillColor: '#fef3c7',
+                                    fillOpacity: 0.85
+                                });
+                            }
+                        },
+                        mouseout: (e) => {
+                            AppState.geoJsonLayer.resetStyle(layer);
+                        },
+                        click: (e) => {
+                            L.DomEvent.stopPropagation(e);
+                            const isDiscovered = Boolean(AppState.discovered[meta.id]);
+                            if (isDiscovered) {
+                                openEntityDossier(meta.id);
+                            } else {
+                                // Switch to Country Drill if needed and lock onto this country for the user to type & guess!
+                                if (AppState.mode !== 'country') {
+                                    setDiscoveryMode('country');
+                                }
+                                selectCountryForChallenge(feature, layer);
+                            }
+                        }
+                    });
+                }
+            }).addTo(map);
+        }
+
+        function computeCountryPolygonStyle(feature) {
+            const meta = feature.atlasMeta;
+            const isDiscovered = Boolean(AppState.discovered[meta.id]);
+            const hasMemory = AppState.memoriesIndex.has(meta.id);
+            const isTarget = AppState.activeChallenge?.type === 'country' && AppState.activeChallenge?.feature?.atlasMeta?.id === meta.id;
+
+            // Active quiz target country being guessed right now
+            if (isTarget) {
+                return {
+                    color: '#d97706',
+                    weight: 2.8,
+                    opacity: 1,
+                    fillColor: '#fde68a',
+                    fillOpacity: 0.82
+                };
+            }
+
+            if (isDiscovered && hasMemory) {
+                return {
+                    color: '#059669',
+                    weight: 2.2,
+                    opacity: 0.95,
+                    fillColor: '#10b981',
+                    fillOpacity: 0.45
+                };
+            }
+
+            if (isDiscovered) {
+                return {
+                    color: '#1a73e8',
+                    weight: 2,
+                    opacity: 0.9,
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.35
+                };
+            }
+
+            // Undiscovered natural landmass state (warm pastel terrain with crisp border)
+            return {
+                color: '#64748b',
+                weight: 1.1,
+                opacity: 0.85,
+                fillColor: '#eef2e6',
+                fillOpacity: AppState.mapStyle === 'vector_only' ? 0.96 : 0.55
+            };
+        }
+
+        /***********************************************************************
+         * 3B. WATERMARK-FREE BASE MAP & CUSTOM API KEY ENGINE
+         ***********************************************************************/
+        function loadMapConfig() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY_MAP_CONFIG);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    AppState.mapStyle = parsed.mapStyle || 'vector_only';
+                    AppState.customProvider = parsed.customProvider || 'maptiler';
+                    AppState.customApiKey = parsed.customApiKey || '';
+                }
+            } catch (e) {
+                AppState.mapStyle = 'vector_only';
+            }
+        }
+
+        function saveMapConfig() {
+            try {
+                localStorage.setItem(STORAGE_KEY_MAP_CONFIG, JSON.stringify({
+                    mapStyle: AppState.mapStyle,
+                    customProvider: AppState.customProvider,
+                    customApiKey: AppState.customApiKey
+                }));
+            } catch (e) {}
+        }
+
+        function applyBaseMapLayer() {
+            if (!map) return;
+            if (AppState.baseTileLayer) {
+                map.removeLayer(AppState.baseTileLayer);
+                AppState.baseTileLayer = null;
+            }
+
+            const style = AppState.mapStyle;
+
+            if (style === 'vector_only') {
+                // 100% Self-Contained Vector Ocean & Landmasses — zero external tile servers, zero watermarks ever!
+                AppState.baseTileLayer = null;
+            } else if (style === 'esri_physical') {
+                // Esri World Physical Map: Free, keyless, natural terrain without country text labels or watermarks
+                AppState.baseTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}', {
+                    attribution: 'Tiles &copy; Esri &mdash; US National Park Service',
+                    maxZoom: 8
+                }).addTo(map);
+            } else if (style === 'carto_nolabels') {
+                AppState.baseTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; OpenStreetMap &copy; CARTO',
+                    subdomains: 'abcd',
+                    maxZoom: 18
+                }).addTo(map);
+            } else if (style === 'custom_key' && AppState.customApiKey) {
+                const key = encodeURIComponent(AppState.customApiKey.trim());
+                if (AppState.customProvider === 'maptiler') {
+                    AppState.baseTileLayer = L.tileLayer(`https://api.maptiler.com/maps/backdrop/{z}/{x}/{y}.png?key=${key}`, {
+                        attribution: '&copy; MapTiler &copy; OpenStreetMap',
+                        maxZoom: 18
+                    }).addTo(map);
+                } else {
+                    AppState.baseTileLayer = L.tileLayer(`https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=${key}`, {
+                        attribution: '&copy; Stadia Maps &copy; OpenStreetMap',
+                        maxZoom: 18
+                    }).addTo(map);
+                }
+            }
+
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            updateMapSettingsModalUI();
+        }
+
+        function switchBaseMapStyle(styleName) {
+            AppState.mapStyle = styleName;
+            saveMapConfig();
+            applyBaseMapLayer();
+            showToast(`Switched map engine to ${styleName.replace('_', ' ').toUpperCase()}.`, 'emerald');
+        }
+
+        function saveAndApplyCustomApiKey() {
+            const provider = document.getElementById('custom-key-provider').value;
+            const key = document.getElementById('custom-map-api-key').value.trim();
+            if (!key) {
+                showToast('Please paste a valid API key first.', 'amber');
+                return;
+            }
+            AppState.customProvider = provider;
+            AppState.customApiKey = key;
+            AppState.mapStyle = 'custom_key';
+            saveMapConfig();
+            applyBaseMapLayer();
+            closeMapSettingsModal();
+            showToast(`Activated custom ${provider.toUpperCase()} API key!`, 'emerald');
+        }
+
+        function openMapSettingsModal() {
+            updateMapSettingsModalUI();
+            const modal = document.getElementById('map-settings-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeMapSettingsModal() {
+            const modal = document.getElementById('map-settings-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function updateMapSettingsModalUI() {
+            ['vector_only', 'esri_physical', 'carto_nolabels'].forEach(key => {
+                const btn = document.getElementById(`style-btn-${key}`);
+                if (!btn) return;
+                if (AppState.mapStyle === key) {
+                    btn.className = 'p-3 rounded-2xl border-2 text-left transition-all bg-blue-50/95 border-gblue-600 shadow-sm';
+                } else {
+                    btn.className = 'p-3 rounded-2xl border border-slate-200 bg-white/80 hover:bg-white text-left transition-all';
+                }
+            });
+            const keyInput = document.getElementById('custom-map-api-key');
+            const provSelect = document.getElementById('custom-key-provider');
+            if (keyInput) keyInput.value = AppState.customApiKey || '';
+            if (provSelect) provSelect.value = AppState.customProvider || 'maptiler';
+        }
+
+        /***********************************************************************
+         * 4. CLICK-TO-IDENTIFY CHALLENGE SYSTEM (Country & City Modes)
+         ***********************************************************************/
+        function normalizeText(str) {
+            return String(str || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9\s]/g, '')
+                .trim();
+        }
+
+        function setDiscoveryMode(mode) {
+            AppState.mode = mode;
+            AppState.activeChallenge = null;
+
+            const btnCountry = document.getElementById('btn-mode-country');
+            const btnCity = document.getElementById('btn-mode-city');
+
+            if (mode === 'country') {
+                btnCountry.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 bg-gblue-600 text-white shadow-sm';
+                btnCity.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100/70';
+            } else {
+                btnCity.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 bg-gblue-600 text-white shadow-sm';
+                btnCountry.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100/70';
+            }
+
+            resetChallengeHUD();
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            renderAllDiscoveredOnMap();
+        }
+
+        function resetChallengeHUD() {
+            const input = document.getElementById('discovery-input');
+            const submitBtn = document.getElementById('btn-discover-submit');
+            const hintBtn = document.getElementById('btn-hint-challenge');
+            const badge = document.getElementById('challenge-status-badge');
+            const label = document.getElementById('challenge-target-label');
+            const feedback = document.getElementById('challenge-feedback');
+
+            input.value = '';
+            input.disabled = true;
+            submitBtn.disabled = true;
+            hintBtn.classList.add('hidden');
+            feedback.classList.add('hidden');
+
+            badge.className = 'px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800 text-[11px] font-bold flex items-center gap-1.5 mr-2.5 shrink-0';
+            if (AppState.mode === 'country') {
+                label.textContent = 'Step 1: Click a Country';
+                input.placeholder = 'Click any unrevealed country on the map to guess its name...';
+            } else {
+                label.textContent = 'Step 1: Click a City Pin';
+                input.placeholder = 'Click any pulsing amber Mystery City beacon on the map to guess...';
+            }
+        }
+
+        function selectCountryForChallenge(feature, layer) {
+            const meta = feature.atlasMeta;
+            AppState.activeChallenge = {
+                type: 'country',
+                feature: feature,
+                layer: layer,
+                hintCount: 0
+            };
+
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(f => computeCountryPolygonStyle(f));
+            }
+
+            // Gently pan towards the selected territory
+            const bounds = layer.getBounds();
+            map.flyToBounds(bounds, { padding: [90, 90], maxZoom: 5, duration: 0.9 });
+
+            // Activate top HUD input for user to type the country name
+            const input = document.getElementById('discovery-input');
+            const submitBtn = document.getElementById('btn-discover-submit');
+            const hintBtn = document.getElementById('btn-hint-challenge');
+            const badge = document.getElementById('challenge-status-badge');
+            const label = document.getElementById('challenge-target-label');
+            const feedback = document.getElementById('challenge-feedback');
+
+            badge.className = 'px-2.5 py-1 rounded-xl bg-blue-100 text-gblue-700 text-[11px] font-bold flex items-center gap-1.5 mr-2.5 shrink-0';
+            label.textContent = `Region: ${meta.continent}`;
+            input.disabled = false;
+            submitBtn.disabled = false;
+            hintBtn.classList.remove('hidden');
+            feedback.classList.add('hidden');
+            input.value = '';
+            input.placeholder = `Type the name of this ${meta.continent} country & press Enter...`;
+            input.focus();
+        }
+
+        function selectCityForChallenge(cityObj) {
+            AppState.activeChallenge = {
+                type: 'city',
+                cityObj: cityObj,
+                hintCount: 0
+            };
+
+            renderAllDiscoveredOnMap();
+            map.flyTo([cityObj.lat, cityObj.lng], Math.max(map.getZoom(), 6), { duration: 0.9 });
+
+            const input = document.getElementById('discovery-input');
+            const submitBtn = document.getElementById('btn-discover-submit');
+            const hintBtn = document.getElementById('btn-hint-challenge');
+            const badge = document.getElementById('challenge-status-badge');
+            const label = document.getElementById('challenge-target-label');
+            const feedback = document.getElementById('challenge-feedback');
+
+            badge.className = 'px-2.5 py-1 rounded-xl bg-amber-100 text-amber-800 text-[11px] font-bold flex items-center gap-1.5 mr-2.5 shrink-0';
+            label.textContent = `Mystery City (${cityObj.country})`;
+            input.disabled = false;
+            submitBtn.disabled = false;
+            hintBtn.classList.remove('hidden');
+            feedback.classList.add('hidden');
+            input.value = '';
+            input.placeholder = `What major city in ${cityObj.country} is this? Press Enter...`;
+            input.focus();
+        }
+
+        function triggerDiscoveryFromInput() {
+            const input = document.getElementById('discovery-input');
+            const rawGuess = input.value.trim();
+            if (!rawGuess || !AppState.activeChallenge) return;
+
+            if (AppState.activeChallenge.type === 'country') {
+                verifyCountryChallengeGuess(rawGuess);
+            } else {
+                verifyCityChallengeGuess(rawGuess);
+            }
+        }
+
+        function verifyCountryChallengeGuess(rawGuess) {
+            const { feature } = AppState.activeChallenge;
+            const meta = feature.atlasMeta;
+            const props = feature.properties || {};
+
+            const normGuess = normalizeText(rawGuess);
+            const aliasedGuess = COUNTRY_ALIASES[normGuess] ? normalizeText(COUNTRY_ALIASES[normGuess]) : normGuess;
+
+            // Build set of accepted names for this specific polygon
+            const acceptedNames = new Set(
+                [
+                    meta.name,
+                    meta.admin,
+                    props.NAME,
+                    props.NAME_LONG,
+                    props.BRK_NAME,
+                    props.FORMAL_EN,
+                    props.SOVEREIGNT
+                ]
+                    .filter(Boolean)
+                    .map(n => normalizeText(n))
+            );
+
+            // Also accept any alias key that points to this country
+            Object.entries(COUNTRY_ALIASES).forEach(([aliasKey, canonicalVal]) => {
+                if (acceptedNames.has(normalizeText(canonicalVal))) {
+                    acceptedNames.add(normalizeText(aliasKey));
+                }
+            });
+
+            if (acceptedNames.has(normGuess) || acceptedNames.has(aliasedGuess)) {
+                // Correct Identification!
+                AppState.activeChallenge = null;
+                resetChallengeHUD();
+                revealCountryByFeature(feature, true);
+            } else {
+                // Wrong Guess — Shake & Prompt to Try Again
+                showChallengeErrorFeedback(`"${rawGuess}" is not correct. Try again or click Hint!`);
+            }
+        }
+
+        function verifyCityChallengeGuess(rawGuess) {
+            const { cityObj } = AppState.activeChallenge;
+            const normGuess = normalizeText(rawGuess);
+
+            const accepted = new Set([
+                normalizeText(cityObj.name),
+                ...(cityObj.aliases || []).map(a => normalizeText(a))
+            ]);
+
+            if (accepted.has(normGuess)) {
+                // Correct City Identification!
+                const id = `city:${normalizeText(cityObj.name)}-${normalizeText(cityObj.iso2)}`;
+                AppState.activeChallenge = null;
+                resetChallengeHUD();
+
+                registerDiscoveredEntity({
+                    id,
+                    type: 'city',
+                    name: cityObj.name,
+                    subtitle: cityObj.country,
+                    iso2: cityObj.iso2,
+                    iso3: '',
+                    lat: cityObj.lat,
+                    lng: cityObj.lng,
+                    population: cityObj.pop,
+                    wikiTitle: cityObj.wiki,
+                    discoveredAt: Date.now()
+                }, true);
+            } else {
+                showChallengeErrorFeedback(`"${rawGuess}" is not this city in ${cityObj.country}. Try again!`);
+            }
+        }
+
+        function showChallengeErrorFeedback(msg) {
+            const bar = document.getElementById('challenge-bar-container');
+            const feedback = document.getElementById('challenge-feedback');
+            const feedbackText = document.getElementById('challenge-feedback-text');
+            const input = document.getElementById('discovery-input');
+
+            bar.classList.remove('shake-anim');
+            void bar.offsetWidth; // trigger reflow
+            bar.classList.add('shake-anim');
+
+            feedback.className = 'absolute left-0 right-0 top-full mt-2 glass-panel rounded-2xl px-4 py-2.5 text-xs font-semibold flex items-center justify-between z-50 border border-red-300 bg-red-50/95 text-red-700';
+            feedbackText.innerHTML = `<i class="fa-solid fa-circle-xmark mr-1.5"></i>${msg}`;
+            feedback.classList.remove('hidden');
+
+            input.select();
+            input.focus();
+        }
+
+        function giveChallengeHint() {
+            if (!AppState.activeChallenge) return;
+            AppState.activeChallenge.hintCount = (AppState.activeChallenge.hintCount || 0) + 1;
+
+            const answer = AppState.activeChallenge.type === 'country'
+                ? AppState.activeChallenge.feature.atlasMeta.name
+                : AppState.activeChallenge.cityObj.name;
+
+            const revealLen = Math.min(answer.length, AppState.activeChallenge.hintCount * 2);
+            const masked = answer.slice(0, revealLen) + answer.slice(revealLen).replace(/[a-zA-Z]/g, '•');
+
+            const feedback = document.getElementById('challenge-feedback');
+            const feedbackText = document.getElementById('challenge-feedback-text');
+            feedback.className = 'absolute left-0 right-0 top-full mt-2 glass-panel rounded-2xl px-4 py-2.5 text-xs font-semibold flex items-center justify-between z-50 border border-amber-300 bg-amber-50/95 text-amber-800';
+            feedbackText.innerHTML = `<i class="fa-regular fa-lightbulb mr-1.5"></i>Hint: <strong>${masked}</strong> (${answer.length} letters)`;
+            feedback.classList.remove('hidden');
+
+            document.getElementById('discovery-input').focus();
+        }
+
+        function skipOrRevealTarget() {
+            if (!AppState.activeChallenge) return;
+            if (AppState.activeChallenge.type === 'country') {
+                const feat = AppState.activeChallenge.feature;
+                AppState.activeChallenge = null;
+                resetChallengeHUD();
+                revealCountryByFeature(feat, true);
+            } else {
+                const cityObj = AppState.activeChallenge.cityObj;
+                const id = `city:${normalizeText(cityObj.name)}-${normalizeText(cityObj.iso2)}`;
+                AppState.activeChallenge = null;
+                resetChallengeHUD();
+                registerDiscoveredEntity({
+                    id,
+                    type: 'city',
+                    name: cityObj.name,
+                    subtitle: cityObj.country,
+                    iso2: cityObj.iso2,
+                    iso3: '',
+                    lat: cityObj.lat,
+                    lng: cityObj.lng,
+                    population: cityObj.pop,
+                    wikiTitle: cityObj.wiki,
+                    discoveredAt: Date.now()
+                }, true);
+            }
+        }
+
+        function revealCountryByFeature(feature, flyAndOpen = true) {
+            const meta = feature.atlasMeta;
+            const tempLayer = L.geoJSON(feature);
+            const bounds = tempLayer.getBounds();
+            const center = bounds.getCenter();
+
+            const record = {
+                id: meta.id,
+                type: 'country',
+                name: meta.name,
+                subtitle: meta.continent || 'Sovereign Territory',
+                iso3: meta.iso3,
+                iso2: meta.iso2,
+                lat: center.lat,
+                lng: center.lng,
+                wikiTitle: meta.name,
+                discoveredAt: AppState.discovered[meta.id]?.discoveredAt || Date.now()
+            };
+
+            registerDiscoveredEntity(record, flyAndOpen, bounds);
+        }
+
+        function registerDiscoveredEntity(record, flyAndOpen = true, bounds = null) {
+            const isAlreadyDiscovered = Boolean(AppState.discovered[record.id]);
+            AppState.discovered[record.id] = record;
+            persistRegistry();
+
+            // Refresh map visuals
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            renderAllDiscoveredOnMap();
+            renderRegistryList();
+            updateHudCounters();
+
+            if (!isAlreadyDiscovered) {
+                showToast(`Discovered ${record.name}! Added to your Atlas.`, 'emerald');
+            }
+
+            if (flyAndOpen) {
+                if (bounds && record.type === 'country') {
+                    map.flyToBounds(bounds, { padding: [70, 70], maxZoom: 5, duration: 1.2 });
+                } else {
+                    map.flyTo([record.lat, record.lng], record.type === 'city' ? 9 : 5, { duration: 1.2 });
+                }
+                openEntityDossier(record.id);
+            }
+        }
+
+        function renderAllDiscoveredOnMap() {
+            if (!AppState.markersLayer) return;
+            AppState.markersLayer.clearLayers();
+
+            // 1. Render all discovered entities (Blue Unlocked or Emerald Core Memory beacons)
+            Object.values(AppState.discovered).forEach(entity => {
+                const hasMemory = AppState.memoriesIndex.has(entity.id);
+                const beaconColorClass = hasMemory ? 'beacon-emerald' : 'beacon-blue';
+
+                const icon = L.divIcon({
+                    className: 'custom-beacon-icon',
+                    html: `
+                        <div class="beacon-wrapper ${beaconColorClass}">
+                            <div class="beacon-ring"></div>
+                            <div class="beacon-core"></div>
+                        </div>
+                    `,
+                    iconSize: [28, 28],
+                    iconAnchor: [14, 14]
+                });
+
+                const marker = L.marker([entity.lat, entity.lng], { icon })
+                    .bindTooltip(
+                        `<div class="flex items-center gap-1.5">
+                            <span>${entity.name}</span>
+                            ${hasMemory ? '<i class="fa-solid fa-camera text-emerald-600 text-[10px]"></i>' : ''}
+                        </div>`,
+                        { direction: 'top', offset: [0, -10], className: 'atlas-tooltip' }
+                    )
+                    .on('click', () => {
+                        map.flyTo([entity.lat, entity.lng], Math.max(map.getZoom(), entity.type === 'city' ? 8 : 4), { duration: 0.9 });
+                        openEntityDossier(entity.id);
+                    });
+
+                AppState.markersLayer.addLayer(marker);
+            });
+
+            // 2. When in City Drill mode, also render unrevealed Mystery City beacons so the user can click & guess them!
+            if (AppState.mode === 'city') {
+                CURATED_CITIES.forEach(cityObj => {
+                    const cityId = `city:${normalizeText(cityObj.name)}-${normalizeText(cityObj.iso2)}`;
+                    if (AppState.discovered[cityId]) return; // already unlocked
+
+                    const isTarget = AppState.activeChallenge?.type === 'city' &&
+                        AppState.activeChallenge?.cityObj?.name === cityObj.name;
+
+                    const beaconClass = isTarget ? 'beacon-target' : 'beacon-mystery';
+                    const icon = L.divIcon({
+                        className: 'custom-beacon-icon',
+                        html: `
+                            <div class="beacon-wrapper ${beaconClass}">
+                                <div class="beacon-ring"></div>
+                                <div class="beacon-core"></div>
+                            </div>
+                        `,
+                        iconSize: [28, 28],
+                        iconAnchor: [14, 14]
+                    });
+
+                    const mysteryMarker = L.marker([cityObj.lat, cityObj.lng], { icon })
+                        .bindTooltip(
+                            `<div class="flex items-center gap-1.5 text-amber-700">
+                                <i class="fa-solid fa-circle-question"></i>
+                                <span>Mystery City (${cityObj.country}) — Click to Guess</span>
+                            </div>`,
+                            { direction: 'top', offset: [0, -10], className: 'atlas-tooltip' }
+                        )
+                        .on('click', () => {
+                            selectCityForChallenge(cityObj);
+                        });
+
+                    AppState.markersLayer.addLayer(mysteryMarker);
+                });
+            }
+        }
+
+        /***********************************************************************
+         * 5. INTELLIGENCE BRIEFING ENGINE (REST Countries + Wikipedia API)
+         ***********************************************************************/
+        async function openEntityDossier(entityId) {
+            const entity = AppState.discovered[entityId];
+            if (!entity) return;
+
+            AppState.currentEntityId = entityId;
+
+            // Slide Dossier panel into view
+            const panel = document.getElementById('dossier-panel');
+            panel.classList.remove('translate-x-[110%]');
+
+            // Populate immediate header info
+            document.getElementById('dossier-title').textContent = entity.name;
+            document.getElementById('dossier-coords').textContent = `${entity.subtitle} • ${entity.lat.toFixed(2)}°, ${entity.lng.toFixed(2)}°`;
+            document.getElementById('dossier-type-badge').textContent = entity.type === 'country' ? 'Sovereign Country' : 'Metropolitan Hub';
+
+            // Update outbound links immediately
+            const osmZoom = entity.type === 'city' ? 12 : 5;
+            document.getElementById('directive-osm').href = `https://www.openstreetmap.org/#map=${osmZoom}/${entity.lat}/${entity.lng}`;
+            document.getElementById('directive-wiki').href = `https://en.wikipedia.org/wiki/${encodeURIComponent(entity.wikiTitle || entity.name)}`;
+
+            // Reset Hero & Flag while loading
+            const heroImg = document.getElementById('dossier-hero-img');
+            const heroFallback = document.getElementById('dossier-hero-fallback');
+            const flagImg = document.getElementById('dossier-flag');
+            heroImg.classList.add('hidden');
+            heroFallback.classList.remove('hidden');
+            flagImg.classList.add('hidden');
+
+            // Load Core Memory for this entity from IndexedDB
+            await loadEntityMemoryIntoModal(entityId);
+
+            // Show Skeleton & Fetch REST Countries + Wikipedia Summary in parallel
+            document.getElementById('intel-skeleton').classList.remove('hidden');
+            document.getElementById('intel-stats-section').classList.add('hidden');
+
+            const [countryData, wikiData] = await Promise.all([
+                fetchRestCountryTelemetry(entity),
+                fetchWikipediaSummary(entity.wikiTitle || entity.name)
+            ]);
+
+            // Guard against race conditions if user clicked another pin quickly
+            if (AppState.currentEntityId !== entityId) return;
+
+            document.getElementById('intel-skeleton').classList.add('hidden');
+            document.getElementById('intel-stats-section').classList.remove('hidden');
+
+            populateDossierTelemetry(entity, countryData, wikiData);
+        }
+
+        async function fetchRestCountryTelemetry(entity) {
+            const cacheKey = entity.iso3 || entity.iso2 || entity.subtitle || entity.name;
+            if (AppState.restCountriesCache.has(cacheKey)) {
+                return AppState.restCountriesCache.get(cacheKey);
+            }
+
+            try {
+                let res = null;
+                if (entity.iso3 && entity.iso3.length === 3) {
+                    res = await fetch(`https://restcountries.com/v3.1/alpha/${encodeURIComponent(entity.iso3)}`);
+                } else if (entity.iso2 && entity.iso2.length === 2) {
+                    res = await fetch(`https://restcountries.com/v3.1/alpha/${encodeURIComponent(entity.iso2)}`);
+                }
+
+                if (!res || !res.ok) {
+                    const lookupName = entity.type === 'city' ? entity.subtitle : entity.name;
+                    res = await fetch(`https://restcountries.com/v3.1/name/${encodeURIComponent(lookupName)}`);
+                }
+
+                if (res && res.ok) {
+                    const json = await res.json();
+                    const record = Array.isArray(json) ? json[0] : json;
+                    if (record) {
+                        AppState.restCountriesCache.set(cacheKey, record);
+                        return record;
+                    }
+                }
+            } catch (err) {
+                console.warn('REST Countries fallback:', err);
+            }
+            return null;
+        }
+
+        async function fetchWikipediaSummary(title) {
+            if (AppState.wikiSummaryCache.has(title)) {
+                return AppState.wikiSummaryCache.get(title);
+            }
+
+            try {
+                const cleanTitle = title.replace(/\s+/g, '_');
+                const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanTitle)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    AppState.wikiSummaryCache.set(title, data);
+                    return data;
+                }
+            } catch (err) {
+                console.warn('Wikipedia Summary fallback:', err);
+            }
+            return null;
+        }
+
+        function populateDossierTelemetry(entity, countryData, wikiData) {
+            // 1. Flag SVG
+            const flagImg = document.getElementById('dossier-flag');
+            if (countryData?.flags?.svg || countryData?.flags?.png) {
+                flagImg.src = countryData.flags.svg || countryData.flags.png;
+                flagImg.classList.remove('hidden');
+            }
+
+            // 2. Vital Stats
+            const capital = entity.type === 'city'
+                ? `${entity.name} (${countryData?.name?.common || entity.subtitle})`
+                : (countryData?.capital ? countryData.capital.join(', ') : 'N/A');
+
+            const population = entity.population
+                ? entity.population
+                : (countryData?.population ? countryData.population.toLocaleString() : 'N/A');
+
+            let currencies = 'N/A';
+            if (countryData?.currencies) {
+                currencies = Object.values(countryData.currencies)
+                    .map(c => `${c.name} (${c.symbol || ''})`.trim())
+                    .join(', ');
+            }
+
+            let giniDisplay = 'High-Income / Developing';
+            if (countryData?.gini) {
+                const years = Object.keys(countryData.gini);
+                if (years.length > 0) {
+                    const latestYear = years[years.length - 1];
+                    giniDisplay = `Gini ${countryData.gini[latestYear]} (${latestYear})`;
+                }
+            }
+
+            let languages = 'N/A';
+            if (countryData?.languages) {
+                languages = Object.values(countryData.languages).slice(0, 4).join(', ');
+            }
+
+            const area = countryData?.area ? `${countryData.area.toLocaleString()} km²` : 'Urban Footprint';
+            const regionTag = countryData?.subregion || countryData?.region || entity.subtitle || 'Global';
+
+            document.getElementById('stat-region-tag').textContent = regionTag;
+            document.getElementById('stat-capital').textContent = capital;
+            document.getElementById('stat-population').textContent = population;
+            document.getElementById('stat-currency').textContent = currencies;
+            document.getElementById('stat-gini').textContent = giniDisplay;
+            document.getElementById('stat-languages').textContent = languages;
+            document.getElementById('stat-area').textContent = area;
+
+            // 3. Wikipedia Cultural Summary & Visual Thumbnail
+            const extractEl = document.getElementById('wiki-extract');
+            if (wikiData?.extract) {
+                extractEl.textContent = wikiData.extract;
+            } else {
+                extractEl.textContent = `${entity.name} (${entity.subtitle}) is a notable geographic landmark recorded in your exploration atlas at coordinates ${entity.lat.toFixed(2)}°, ${entity.lng.toFixed(2)}°.`;
+            }
+
+            if (wikiData?.content_urls?.desktop?.page) {
+                document.getElementById('directive-wiki').href = wikiData.content_urls.desktop.page;
+            }
+
+            const heroImg = document.getElementById('dossier-hero-img');
+            const heroFallback = document.getElementById('dossier-hero-fallback');
+            const wikiThumb = wikiData?.originalimage?.source || wikiData?.thumbnail?.source;
+            const userPhoto = AppState.currentMemoryPhotos[0];
+
+            if (userPhoto || wikiThumb) {
+                heroImg.src = userPhoto || wikiThumb;
+                heroImg.classList.remove('hidden');
+                heroFallback.classList.add('hidden');
+            }
+        }
+
+        function closeDossierPanel() {
+            document.getElementById('dossier-panel').classList.add('translate-x-[110%]');
+            AppState.currentEntityId = null;
+        }
+
+        function switchDossierTab(tab) {
+            const btnIntel = document.getElementById('tab-btn-intel');
+            const btnMemory = document.getElementById('tab-btn-memory');
+            const contentIntel = document.getElementById('tab-content-intel');
+            const contentMemory = document.getElementById('tab-content-memory');
+
+            if (tab === 'intel') {
+                btnIntel.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-t-xl border-b-2 border-gblue-600 text-gblue-600 bg-white shadow-sm flex items-center justify-center gap-2 transition-all';
+                btnMemory.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-t-xl border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2 transition-all';
+                contentIntel.classList.remove('hidden');
+                contentMemory.classList.add('hidden');
+            } else {
+                btnMemory.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-t-xl border-b-2 border-gemerald-600 text-gemerald-700 bg-white shadow-sm flex items-center justify-center gap-2 transition-all';
+                btnIntel.className = 'flex-1 py-2.5 px-3 text-xs font-bold rounded-t-xl border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center justify-center gap-2 transition-all';
+                contentMemory.classList.remove('hidden');
+                contentIntel.classList.add('hidden');
+            }
+        }
+
+        /***********************************************************************
+         * 6. PERSONAL MEMORY ARCHIVE ("CORE MEMORIES" VAULT)
+         ***********************************************************************/
+        async function syncMemoriesIndex() {
+            const allMemories = await vaultDB.getAllMemories();
+            AppState.memoriesIndex.clear();
+            allMemories.forEach(mem => {
+                if ((mem.notes && mem.notes.trim().length > 0) || (mem.photos && mem.photos.length > 0)) {
+                    AppState.memoriesIndex.add(mem.id);
+                }
+            });
+        }
+
+        async function loadEntityMemoryIntoModal(entityId) {
+            const memory = await vaultDB.getMemory(entityId);
+            const notesInput = document.getElementById('memory-notes-input');
+            const timestampEl = document.getElementById('memory-saved-timestamp');
+            const memoryPill = document.getElementById('dossier-memory-pill');
+            const tabDot = document.getElementById('tab-memory-dot');
+
+            if (memory && ((memory.notes && memory.notes.trim()) || (memory.photos && memory.photos.length > 0))) {
+                notesInput.value = memory.notes || '';
+                AppState.currentMemoryPhotos = Array.isArray(memory.photos) ? [...memory.photos] : [];
+                const dateStr = new Date(memory.updatedAt || Date.now()).toLocaleDateString(undefined, {
+                    month: 'short', day: 'numeric', year: 'numeric'
+                });
+                timestampEl.textContent = `Vaulted ${dateStr}`;
+                memoryPill.classList.remove('hidden');
+                memoryPill.classList.add(' inline-flex');
+                tabDot.classList.remove('hidden');
+            } else {
+                notesInput.value = '';
+                AppState.currentMemoryPhotos = [];
+                timestampEl.textContent = 'No memory archived yet';
+                memoryPill.classList.add('hidden');
+                tabDot.classList.add('hidden');
+            }
+
+            updateMarkdownPreview(notesInput.value);
+            renderMemoryPhotoGallery();
+        }
+
+        function updateMarkdownPreview(rawText) {
+            const previewEl = document.getElementById('memory-markdown-preview');
+            if (!rawText || !rawText.trim()) {
+                previewEl.classList.add('hidden');
+                previewEl.innerHTML = '';
+                return;
+            }
+            // Lightweight safe Markdown formatting for preview
+            const escaped = rawText
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            const formatted = escaped
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
+                .replace(/\n/g, '<br/>');
+
+            previewEl.innerHTML = `<div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Formatted Journal Preview</div>${formatted}`;
+            previewEl.classList.remove('hidden');
+        }
+
+        async function handleMemoryPhotoUpload(event) {
+            const files = Array.from(event.target.files || []);
+            await processMemoryFiles(files);
+            event.target.value = '';
+        }
+
+        async function processMemoryFiles(files) {
+            const imageFiles = files.filter(f => f.type && f.type.startsWith('image/'));
+            if (imageFiles.length === 0) return;
+
+            for (const file of imageFiles) {
+                if (AppState.currentMemoryPhotos.length >= 9) {
+                    showToast('Maximum 9 photos per location memory reached.', 'amber');
+                    break;
+                }
+                try {
+                    const compressedDataUrl = await compressImageFile(file, 1000, 0.78);
+                    AppState.currentMemoryPhotos.push(compressedDataUrl);
+                } catch (err) {
+                    console.warn('Image compression error:', err);
+                }
+            }
+
+            renderMemoryPhotoGallery();
+            showToast(`Added ${imageFiles.length} photo(s). Click "Save Core Memory" to persist.`, 'emerald');
+        }
+
+        // Client-side Canvas Image Compressor to guard IndexedDB size and keep performance crisp
+        function compressImageFile(file, maxDimension = 1000, quality = 0.78) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let { width, height } = img;
+                        if (width > maxDimension || height > maxDimension) {
+                            if (width > height) {
+                                height = Math.round((height * maxDimension) / width);
+                                width = maxDimension;
+                            } else {
+                                width = Math.round((width * maxDimension) / height);
+                                height = maxDimension;
+                            }
+                        }
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function renderMemoryPhotoGallery() {
+            const grid = document.getElementById('memory-gallery-grid');
+            const countEl = document.getElementById('memory-photo-count');
+            const photos = AppState.currentMemoryPhotos;
+
+            countEl.textContent = `${photos.length} photo${photos.length === 1 ? '' : 's'} attached`;
+
+            if (photos.length === 0) {
+                grid.innerHTML = '';
+                return;
+            }
+
+            grid.innerHTML = photos.map((src, idx) => `
+                <div class="relative group aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100 shadow-sm">
+                    <img src="${src}" alt="Memory ${idx + 1}" onclick="openLightbox('${src}')" class="w-full h-full object-cover cursor-zoom-in transition-transform duration-300 group-hover:scale-105" />
+                    <button onclick="removeMemoryPhoto(${idx})" class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" title="Remove photo">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function removeMemoryPhoto(index) {
+            AppState.currentMemoryPhotos.splice(index, 1);
+            renderMemoryPhotoGallery();
+        }
+
+        async function saveCurrentCoreMemory() {
+            const entityId = AppState.currentEntityId;
+            if (!entityId) return;
+
+            const notes = document.getElementById('memory-notes-input').value.trim();
+            const photos = AppState.currentMemoryPhotos;
+
+            if (!notes && photos.length === 0) {
+                await clearCurrentCoreMemory();
+                return;
+            }
+
+            const record = {
+                id: entityId,
+                notes: notes,
+                photos: photos,
+                updatedAt: Date.now()
+            };
+
+            await vaultDB.saveMemory(record);
+            AppState.memoriesIndex.add(entityId);
+
+            // Refresh UI & Upgrade Map Marker to Emerald Core Memory Beacon
+            await loadEntityMemoryIntoModal(entityId);
+            if (photos.length > 0) {
+                const heroImg = document.getElementById('dossier-hero-img');
+                heroImg.src = photos[0];
+                heroImg.classList.remove('hidden');
+                document.getElementById('dossier-hero-fallback').classList.add('hidden');
+            }
+
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            renderAllDiscoveredOnMap();
+            renderRegistryList();
+            updateHudCounters();
+
+            showToast('Core Memory archived in IndexedDB! Upgraded to Emerald Beacon.', 'emerald');
+        }
+
+        async function clearCurrentCoreMemory() {
+            const entityId = AppState.currentEntityId;
+            if (!entityId) return;
+
+            await vaultDB.deleteMemory(entityId);
+            AppState.memoriesIndex.delete(entityId);
+
+            await loadEntityMemoryIntoModal(entityId);
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            renderAllDiscoveredOnMap();
+            renderRegistryList();
+            updateHudCounters();
+
+            showToast('Core Memory cleared for this location.', 'slate');
+        }
+
+        function openLightbox(src) {
+            const modal = document.getElementById('lightbox-modal');
+            document.getElementById('lightbox-img').src = src;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeLightbox() {
+            const modal = document.getElementById('lightbox-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        /***********************************************************************
+         * 7. REGISTRY DRAWER, CRUD & JSON BACKUP / RESTORE
+         ***********************************************************************/
+        function loadSavedRegistry() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY_REGISTRY);
+                if (raw) {
+                    AppState.discovered = JSON.parse(raw) || {};
+                }
+            } catch (e) {
+                AppState.discovered = {};
+            }
+        }
+
+        function persistRegistry() {
+            try {
+                localStorage.setItem(STORAGE_KEY_REGISTRY, JSON.stringify(AppState.discovered));
+            } catch (e) {
+                console.warn('localStorage quota warning:', e);
+            }
+        }
+
+        function setRegistryFilter(filter) {
+            AppState.registryFilter = filter;
+            ['all', 'country', 'city', 'memory'].forEach(key => {
+                const btn = document.getElementById(`filter-${key}`);
+                if (key === filter) {
+                    btn.className = 'flex-1 py-1 rounded-lg bg-white text-slate-900 shadow-sm border border-slate-200/80 transition-all flex items-center justify-center gap-1';
+                } else {
+                    btn.className = 'flex-1 py-1 rounded-lg text-slate-500 hover:text-slate-800 transition-all flex items-center justify-center gap-1';
+                }
+            });
+            renderRegistryList();
+        }
+
+        function renderRegistryList() {
+            const listEl = document.getElementById('registry-list');
+            const allItems = Object.values(AppState.discovered).sort((a, b) => (b.discoveredAt || 0) - (a.discoveredAt || 0));
+
+            const filtered = allItems.filter(item => {
+                if (AppState.registryFilter === 'country') return item.type === 'country';
+                if (AppState.registryFilter === 'city') return item.type === 'city';
+                if (AppState.registryFilter === 'memory') return AppState.memoriesIndex.has(item.id);
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-10 px-4 space-y-2">
+                        <div class="w-10 h-10 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                            <i class="fa-solid fa-hand-pointer text-lg"></i>
+                        </div>
+                        <p class="text-xs font-semibold text-slate-600">No unlocked locations in this view yet</p>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">
+                            Click any country polygon (or switch to <strong>City Drill</strong> to click a mystery pin), type its name in the top bar to verify, or try the <strong>Demo Tour</strong> below.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(item => {
+                const hasMemory = AppState.memoriesIndex.has(item.id);
+                const isSelected = AppState.currentEntityId === item.id;
+                return `
+                    <div onclick="focusDiscoveredEntity('${item.id}')" class="group p-2.5 rounded-2xl border ${isSelected ? 'bg-blue-50/90 border-gblue-500/40' : 'bg-white/80 hover:bg-white border-slate-200/70'} transition-all cursor-pointer flex items-center justify-between gap-2 shadow-sm">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="w-8 h-8 rounded-xl ${hasMemory ? 'bg-emerald-100 text-gemerald-600' : 'bg-blue-100 text-gblue-600'} flex items-center justify-center shrink-0">
+                                <i class="fa-solid ${hasMemory ? 'fa-camera-retro' : (item.type === 'country' ? 'fa-flag' : 'fa-location-dot')} text-xs"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5">
+                                    <span>${item.name}</span>
+                                    ${hasMemory ? '<span class="w-1.5 h-1.5 rounded-full bg-gemerald-500" title="Core Memory Attached"></span>' : ''}
+                                </div>
+                                <div class="text-[10px] font-medium text-slate-400 truncate">${item.subtitle}</div>
+                            </div>
+                        </div>
+                        <button onclick="event.stopPropagation(); deleteEntityById('${item.id}')" class="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 flex items-center justify-center transition-all shrink-0" title="Delete record">
+                            <i class="fa-solid fa-trash-can text-[11px]"></i>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function focusDiscoveredEntity(entityId) {
+            const entity = AppState.discovered[entityId];
+            if (!entity) return;
+            map.flyTo([entity.lat, entity.lng], entity.type === 'city' ? 9 : 5, { duration: 1.0 });
+            openEntityDossier(entityId);
+        }
+
+        function deleteCurrentEntity() {
+            if (!AppState.currentEntityId) return;
+            deleteEntityById(AppState.currentEntityId);
+        }
+
+        function deleteEntityById(entityId) {
+            const entity = AppState.discovered[entityId];
+            if (!entity) return;
+
+            delete AppState.discovered[entityId];
+            persistRegistry();
+
+            if (AppState.currentEntityId === entityId) {
+                closeDossierPanel();
+            }
+
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            renderAllDiscoveredOnMap();
+            renderRegistryList();
+            updateHudCounters();
+
+            showToast(`Removed ${entity.name} from discovered registry.`, 'slate');
+        }
+
+        function updateHudCounters() {
+            const all = Object.values(AppState.discovered);
+            const countriesCount = all.filter(i => i.type === 'country').length;
+            const memoriesCount = AppState.memoriesIndex.size;
+
+            document.getElementById('hud-total-badge').textContent = all.length;
+            document.getElementById('hud-memory-count').textContent = memoriesCount;
+            document.getElementById('registry-progress-label').textContent = `${countriesCount} / 195 Sovereign States • ${all.length - countriesCount} Cities`;
+
+            const countryPct = Math.min(100, (countriesCount / 195) * 100);
+            const memPct = Math.min(100 - countryPct, (memoriesCount / 50) * 100);
+            document.getElementById('progress-bar-countries').style.width = `${countryPct}%`;
+            document.getElementById('progress-bar-memories').style.width = `${memPct}%`;
+        }
+
+        function toggleRegistryDrawer() {
+            AppState.drawerOpen = !AppState.drawerOpen;
+            const drawer = document.getElementById('registry-drawer');
+            const reopenBtn = document.getElementById('btn-reopen-drawer');
+
+            if (AppState.drawerOpen) {
+                drawer.classList.remove('-translate-x-[120%]');
+                reopenBtn.classList.add('hidden');
+                reopenBtn.classList.remove('flex');
+            } else {
+                drawer.classList.add('-translate-x-[120%]');
+                reopenBtn.classList.remove('hidden');
+                reopenBtn.classList.add('flex');
+            }
+        }
+
+        // Export Full JSON Backup (Registry + IndexedDB Core Memories)
+        async function exportAtlasBackup() {
+            const memories = await vaultDB.getAllMemories();
+            const payload = {
+                app: 'TerraMemo Atlas',
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                discovered: AppState.discovered,
+                memories: memories
+            };
+
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `terramemo-atlas-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast('Exported complete Atlas & Core Memories JSON backup.', 'emerald');
+        }
+
+        // Import Full JSON Backup
+        async function importAtlasBackup(event) {
+            const file = event.target.files?.[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                if (data.discovered && typeof data.discovered === 'object') {
+                    AppState.discovered = { ...AppState.discovered, ...data.discovered };
+                    persistRegistry();
+                }
+
+                if (Array.isArray(data.memories)) {
+                    for (const mem of data.memories) {
+                        if (mem && mem.id) {
+                            await vaultDB.saveMemory(mem);
+                        }
+                    }
+                }
+
+                await syncMemoriesIndex();
+                if (AppState.geoJsonLayer) {
+                    AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+                }
+                renderAllDiscoveredOnMap();
+                renderRegistryList();
+                updateHudCounters();
+
+                showToast('Successfully restored Atlas & Core Memories backup!', 'emerald');
+            } catch (err) {
+                showToast('Invalid backup JSON file format.', 'amber');
+            } finally {
+                event.target.value = '';
+            }
+        }
+
+        function openResetConfirmModal() {
+            const modal = document.getElementById('reset-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeResetConfirmModal() {
+            const modal = document.getElementById('reset-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        async function executeAtlasReset(wipeMemoriesToo) {
+            AppState.discovered = {};
+            persistRegistry();
+            closeDossierPanel();
+
+            if (wipeMemoriesToo) {
+                await vaultDB.clearAllMemories();
+                await syncMemoriesIndex();
+            }
+
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            renderAllDiscoveredOnMap();
+            renderRegistryList();
+            updateHudCounters();
+            closeResetConfirmModal();
+
+            showToast(
+                wipeMemoriesToo ? 'Full factory wipe complete.' : 'Memorization drill reset. Core Memories preserved.',
+                'slate'
+            );
+        }
+
+        // Demo Tour Starter Seed so users can immediately test countries, cities, and a sample Core Memory
+        async function seedStarterLocations() {
+            const sampleCountries = ['Japan', 'Italy', 'Switzerland'];
+            sampleCountries.forEach(name => {
+                const feat = AppState.countryLookupMap.get(normalizeText(name));
+                if (feat) revealCountryByFeature(feat, false);
+            });
+
+            const kyoto = CURATED_CITIES.find(c => c.name === 'Kyoto');
+            if (kyoto) {
+                const kyotoId = 'city:kyoto-jp';
+                AppState.discovered[kyotoId] = {
+                    id: kyotoId,
+                    type: 'city',
+                    name: kyoto.name,
+                    subtitle: kyoto.country,
+                    iso2: kyoto.iso2,
+                    iso3: 'JPN',
+                    lat: kyoto.lat,
+                    lng: kyoto.lng,
+                    population: kyoto.pop,
+                    wikiTitle: kyoto.wiki,
+                    discoveredAt: Date.now()
+                };
+
+                // Seed a sample Core Memory on Kyoto if none exists yet
+                const existingMem = await vaultDB.getMemory(kyotoId);
+                if (!existingMem) {
+                    await vaultDB.saveMemory({
+                        id: kyotoId,
+                        notes: "**Autumn in Kyoto**\n- Walked through the *Fushimi Inari* torii gates at dawn\n- Matcha parfaits in Uji & quiet evening along the Kamo River",
+                        photos: [],
+                        updatedAt: Date.now()
+                    });
+                }
+            }
+
+            persistRegistry();
+            await syncMemoriesIndex();
+            if (AppState.geoJsonLayer) {
+                AppState.geoJsonLayer.setStyle(feature => computeCountryPolygonStyle(feature));
+            }
+            renderAllDiscoveredOnMap();
+            renderRegistryList();
+            updateHudCounters();
+
+            focusDiscoveredEntity('city:kyoto-jp');
+            showToast('Loaded Demo Tour with sample countries & Kyoto Core Memory!', 'emerald');
+        }
+
+        /***********************************************************************
+         * 8. LIVE AUTOCOMPLETE, KEYBOARD SHORTCUTS & UI HELPERS
+         ***********************************************************************/
+        function setupUIEventListeners() {
+            const input = document.getElementById('discovery-input');
+            const suggestionsBox = document.getElementById('search-suggestions');
+            const notesInput = document.getElementById('memory-notes-input');
+            const dropzone = document.getElementById('memory-dropzone');
+
+            // Cmd/Ctrl + K global focus shortcut
+            window.addEventListener('keydown', (e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                    e.preventDefault();
+                    input.focus();
+                    input.select();
+                } else if (e.key === 'Escape') {
+                    suggestionsBox.classList.add('hidden');
+                    closeLightbox();
+                    closeResetConfirmModal();
+                    closeMapSettingsModal();
+                }
+            });
+
+            // Enter key inside discovery bar
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    triggerDiscoveryFromInput();
+                }
+            });
+
+            // Hide feedback banner as soon as user starts re-typing a new attempt
+            input.addEventListener('input', () => {
+                document.getElementById('challenge-feedback').classList.add('hidden');
+            });
+
+            // Live markdown preview in Core Memory journal
+            notesInput.addEventListener('input', (e) => {
+                updateMarkdownPreview(e.target.value);
+            });
+
+            // Drag & drop image upload support
+            ['dragenter', 'dragover'].forEach(evtName => {
+                dropzone.addEventListener(evtName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.add('border-gemerald-500', 'bg-emerald-50/70');
+                });
+            });
+            ['dragleave', 'drop'].forEach(evtName => {
+                dropzone.addEventListener(evtName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.remove('border-gemerald-500', 'bg-emerald-50/70');
+                });
+            });
+            dropzone.addEventListener('drop', async (e) => {
+                const files = Array.from(e.dataTransfer?.files || []);
+                await processMemoryFiles(files);
+            });
+
+            // Close suggestions when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#discovery-input') && !e.target.closest('#search-suggestions')) {
+                    suggestionsBox.classList.add('hidden');
+                }
+            });
+        }
+
+        function renderSearchSuggestions(rawQuery) {
+            const box = document.getElementById('search-suggestions');
+            const norm = normalizeText(rawQuery);
+            if (!norm) {
+                box.classList.add('hidden');
+                return;
+            }
+
+            if (AppState.mode === 'country') {
+                const matches = AppState.geoJsonFeatures.filter(f => {
+                    const nameNorm = normalizeText(f.atlasMeta?.name || '');
+                    return nameNorm.includes(norm);
+                }).slice(0, 6);
+
+                if (matches.length === 0) {
+                    box.classList.add('hidden');
+                    return;
+                }
+
+                box.innerHTML = matches.map(f => {
+                    const meta = f.atlasMeta;
+                    const isRev = Boolean(AppState.discovered[meta.id]);
+                    return `
+                        <button onclick="selectCountrySuggestion('${meta.iso3}')" class="w-full px-4 py-2.5 text-left hover:bg-blue-50/80 flex items-center justify-between transition-colors">
+                            <div class="flex items-center gap-2.5">
+                                <i class="fa-solid fa-flag text-xs ${isRev ? 'text-gemerald-600' : 'text-slate-400'}"></i>
+                                <span class="text-xs font-semibold text-slate-800">${meta.name}</span>
+                                <span class="text-[10px] text-slate-400">${meta.continent}</span>
+                            </div>
+                            <span class="text-[10px] font-bold uppercase ${isRev ? 'text-gemerald-600' : 'text-gblue-600'}">
+                                ${isRev ? 'Discovered' : 'Reveal ↵'}
+                            </span>
+                        </button>
+                    `;
+                }).join('');
+                box.classList.remove('hidden');
+            } else {
+                const cityMatches = CURATED_CITIES.filter(c =>
+                    normalizeText(c.name).includes(norm) || normalizeText(c.country).includes(norm)
+                ).slice(0, 5);
+
+                let html = cityMatches.map(c => `
+                    <button onclick="selectCuratedCitySuggestion('${c.name}')" class="w-full px-4 py-2.5 text-left hover:bg-blue-50/80 flex items-center justify-between transition-colors">
+                        <div class="flex items-center gap-2.5">
+                            <i class="fa-solid fa-city text-xs text-gblue-600"></i>
+                            <span class="text-xs font-semibold text-slate-800">${c.name}</span>
+                            <span class="text-[10px] text-slate-400">${c.country}</span>
+                        </div>
+                        <span class="text-[10px] font-bold uppercase text-gblue-600">Pin City ↵</span>
+                    </button>
+                `).join('');
+
+                html += `
+                    <button onclick="triggerDiscoveryFromInput()" class="w-full px-4 py-2.5 text-left bg-slate-50/80 hover:bg-blue-50/80 flex items-center justify-between transition-colors">
+                        <span class="text-xs font-medium text-slate-600">Geocode global city "<strong>${rawQuery.replace(/</g, '&lt;')}</strong>" via OpenStreetMap...</span>
+                        <i class="fa-solid fa-magnifying-glass-location text-xs text-gblue-600"></i>
+                    </button>
+                `;
+
+                box.innerHTML = html;
+                box.classList.remove('hidden');
+            }
+        }
+
+        function selectCountrySuggestion(iso3) {
+            const feat = AppState.geoJsonFeatures.find(f => f.atlasMeta?.iso3 === iso3);
+            if (feat) {
+                document.getElementById('discovery-input').value = '';
+                document.getElementById('search-suggestions').classList.add('hidden');
+                revealCountryByFeature(feat, true);
+            }
+        }
+
+        function selectCuratedCitySuggestion(cityName) {
+            document.getElementById('discovery-input').value = cityName;
+            document.getElementById('search-suggestions').classList.add('hidden');
+            attemptCityDiscovery(cityName);
+        }
+
+        function setSearchLoading(isLoading) {
+            const spinner = document.getElementById('search-spinner');
+            if (isLoading) {
+                spinner.classList.remove('hidden');
+            } else {
+                spinner.classList.add('hidden');
+            }
+        }
+
+        function resetMapView() {
+            map.flyTo([24, 12], 3, { duration: 1.1 });
+        }
+
+        function showToast(message, tone = 'slate') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const toneStyles = {
+                emerald: 'bg-emerald-600 text-white border-emerald-500',
+                amber: 'bg-amber-500 text-white border-amber-400',
+                slate: 'bg-slate-800 text-white border-slate-700'
+            };
+
+            toast.className = `px-4 py-2.5 rounded-2xl shadow-lg border text-xs font-semibold flex items-center gap-2 transition-all duration-300 ${toneStyles[tone] || toneStyles.slate}`;
+            toast.innerHTML = `
+                <i class="fa-solid ${tone === 'emerald' ? 'fa-circle-check' : (tone === 'amber' ? 'fa-circle-info' : 'fa-compass')}"></i>
+                <span>${message}</span>
+            `;
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        // Boot the Atlas on window load
+        window.onload = initAtlasApp;
+    </script>
+</body>
+</html>
